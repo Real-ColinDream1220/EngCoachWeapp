@@ -1,0 +1,268 @@
+@import 'taro-ui/dist/style/index.scss';
+
+.teacher-page {
+  min-height: 100vh;
+  background: #f5f7fa;
+  padding-bottom: 40px;
+  box-sizing: border-box;
+  width: 100%;
+  overflow-x: hidden;
+
+  .loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+
+    .loading-text {
+      font-size: 32px;
+      color: #666;
+    }
+  }
+
+  .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #667eea;
+    padding: 20px 0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 30px;
+
+      .header-left {
+        display: flex;
+        align-items: center;
+
+        .header-title {
+          font-size: 36px;
+          font-weight: bold;
+          color: white;
+          margin-left: 15px;
+        }
+      }
+
+      .header-right {
+        .back-btn {
+          background: white !important;
+          color: #667eea !important;
+          border: none !important;
+          border-radius: 25px !important;
+          font-size: 24px !important;
+          padding: 8px 20px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          line-height: 1 !important;
+        }
+      }
+    }
+  }
+
+  .page-content {
+    padding-top: 110px;
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-bottom: 40px;
+    box-sizing: border-box;
+  }
+
+  .stats-section {
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: center;
+
+    .stats-card {
+      border-radius: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      max-width: 600px;
+      width: 100%;
+      box-sizing: border-box;
+
+      .stats-content {
+        display: flex;
+        justify-content: space-around;
+        padding: 20px 0;
+
+        .stat-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+
+          .stat-label {
+            font-size: 26px;
+            color: #666;
+          }
+
+          .stat-value {
+            font-size: 40px;
+            font-weight: bold;
+            color: #667eea;
+          }
+        }
+      }
+    }
+  }
+
+  .students-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+
+    .section-title {
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 20px;
+      display: block;
+      width: 100%;
+      max-width: 690px;
+    }
+
+    .student-card {
+      margin-bottom: 20px;
+      border-radius: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      width: 100%;
+      max-width: 690px;
+      box-sizing: border-box;
+
+      .student-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 0;
+        cursor: pointer;
+
+        &:active {
+          opacity: 0.7;
+        }
+
+        .student-info {
+          flex: 1;
+
+          .student-name-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+
+            .student-name {
+              font-size: 32px;
+              font-weight: bold;
+              color: #333;
+            }
+          }
+
+          .student-stats {
+            font-size: 26px;
+            color: #666;
+          }
+        }
+      }
+
+      .student-progress {
+        margin: 15px 0 20px 0;
+      }
+
+      .exercises-detail {
+        border-top: 2px solid #f0f0f0;
+        padding-top: 20px;
+        margin-top: 10px;
+
+        .exercises-header {
+          margin-bottom: 15px;
+
+          .exercises-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+          }
+        }
+
+        .exercise-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 15px;
+          margin-bottom: 10px;
+          background: #f9f9f9;
+          border-radius: 12px;
+
+          .exercise-info {
+            flex: 1;
+
+            .exercise-name-row {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              margin-bottom: 8px;
+
+              .exercise-title {
+                font-size: 28px;
+                color: #333;
+                font-weight: 500;
+              }
+            }
+
+            .exercise-unit {
+              font-size: 24px;
+              color: #999;
+              margin-left: 50px;
+            }
+          }
+
+          .report-btn {
+            background: #667eea !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 25px !important;
+            font-size: 24px !important;
+            padding: 8px 20px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            line-height: 1 !important;
+          }
+        }
+
+        .no-exercises {
+          font-size: 26px;
+          color: #999;
+          text-align: center;
+          padding: 20px 0;
+          display: block;
+        }
+      }
+    }
+
+    .empty-card {
+      border-radius: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      width: 100%;
+      max-width: 690px;
+      box-sizing: border-box;
+
+      .empty-content {
+        padding: 60px 0;
+        text-align: center;
+
+        .empty-text {
+          font-size: 30px;
+          color: #999;
+        }
+      }
+    }
+  }
+}
+

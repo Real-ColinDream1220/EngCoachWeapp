@@ -1,0 +1,128 @@
+@import 'taro-ui/dist/style/index.scss';
+
+.login-page {
+  min-height: 100vh;
+  background: #f5f7fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 600px;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  padding: 60px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.logo-section {
+  text-align: center;
+  margin-bottom: 60px;
+
+  .app-title {
+    font-size: 56px;
+    font-weight: bold;
+    color: #667eea;
+    display: block;
+    margin-bottom: 15px;
+  }
+
+  .app-subtitle {
+    font-size: 28px;
+    color: #666;
+    display: block;
+  }
+}
+
+.form-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  .form-label {
+    font-size: 28px;
+    color: #333;
+    display: block;
+    margin-bottom: 20px;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  .passcode-input {
+    width: 100%;
+    height: 88px;
+    background: #f8f9fa;
+    border: 2px solid #e0e0e0;
+    border-radius: 16px;
+    padding: 0 30px;
+    font-size: 32px;
+    color: #333;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+    text-align: center;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: #667eea;
+      background: white;
+    }
+
+    &::placeholder {
+      color: #999;
+      text-align: center;
+    }
+  }
+
+  .error-message {
+    display: block;
+    color: #ff4d4f;
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #fff1f0;
+    border-radius: 12px;
+    border: 1px solid #ffccc7;
+  }
+
+  .login-btn {
+    width: 100%;
+    height: 88px !important;
+    background: #667eea !important;
+    border: none !important;
+    border-radius: 16px !important;
+    font-size: 32px !important;
+    font-weight: bold !important;
+    color: white !important;
+    transition: all 0.3s ease !important;
+
+    &:active {
+      background: #5568d3 !important;
+      transform: translateY(2px);
+    }
+
+    &.at-button--disabled {
+      opacity: 0.6 !important;
+      background: #999 !important;
+    }
+  }
+}
+
+.footer-section {
+  margin-top: 40px;
+
+  .footer-text {
+    font-size: 24px;
+    color: #999;
+    text-align: center;
+    display: block;
+  }
+}
+

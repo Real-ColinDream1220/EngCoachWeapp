@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/exercise-detail/index",
+    "pages/conversation/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#667eea",
+    "navigationBarTitleText": "EngCoach",
+    "navigationBarTextStyle": "white"
+  }
+}

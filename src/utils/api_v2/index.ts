@@ -1,0 +1,17 @@
+// 导出所有接口
+export * from './request'
+export * from './course'
+export * from './textbook'
+export * from './knowledge'
+export * from './types'
+export * from './chapter'
+export * from './unit'
+export * from './exercise'
+export * from './student'
+export * from './audio'
+export * from './report'
+export * from './file'
+export * from './soe'
+export * from './voicePack'
+export * from './content'
+

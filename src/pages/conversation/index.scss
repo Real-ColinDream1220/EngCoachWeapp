@@ -1,0 +1,832 @@
+@import 'taro-ui/dist/style/index.scss';
+
+.conversation-page {
+  height: 100vh;
+  background: #f5f7fa;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.loading-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  
+  .loading-text {
+    font-size: 32px;
+    color: #666;
+  }
+}
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: linear-gradient(135deg, #667eea 0%, #667eea 100%);
+  padding: 20px 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 30px;
+
+    .header-left {
+      display: flex;
+      align-items: center;
+
+      .header-icon {
+        color: white;
+        margin-right: 15px;
+      }
+
+      .header-title {
+        font-size: 36px;
+        font-weight: bold;
+        color: white;
+      }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      
+      .regenerate-btn {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        color: white !important;
+        font-size: 24px !important;
+        border-radius: 15px !important;
+        padding: 8px 16px !important;
+        height: auto !important;
+        
+        &:active {
+          background: rgba(255, 255, 255, 0.3) !important;
+        }
+        
+        &.at-button--disabled {
+          opacity: 0.4 !important;
+          cursor: not-allowed !important;
+        }
+      }
+      
+      .user-name {
+        font-size: 28px;
+        color: white;
+        font-weight: 500;
+      }
+    }
+  }
+}
+
+// 展开/折叠按钮
+.toggle-exercise-btn {
+  position: fixed;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
+  width: 60px;
+  height: 40px;
+  background: white;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  &:active {
+    transform: translateX(-50%) scale(0.95);
+  }
+}
+
+.exercise-info-section {
+  position: fixed;
+  top: 132px; // header 高度 + toggle-btn 高度
+  left: 0;
+  right: 0;
+  z-index: 99;
+  padding: 0 30px;
+  background: #f5f7fa;
+  max-height: 0;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  &.expanded {
+    max-height: 300px;
+    padding: 30px;
+  }
+  
+  &.collapsed {
+    max-height: 0;
+    padding: 0 30px;
+  }
+  
+  .exercise-info-card {
+    border-radius: 20px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+    
+    // 标题样式
+    .at-card__header {
+      text-align: center !important;
+      justify-content: center !important;
+    }
+    
+    .at-card__header-title {
+      font-weight: bold !important;
+      text-align: center !important;
+    }
+    
+    .exercise-info-content {
+      text-align: center !important;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      
+      .exercise-title-text {
+        font-size: 32px;
+        font-weight: bold;
+        color: #333;
+        display: block;
+        text-align: center !important;
+        margin-bottom: 15px;
+      }
+      
+      .exercise-scenario {
+        font-size: 26px;
+        color: #666;
+        line-height: 1.6;
+        display: block;
+        text-align: center !important;
+      }
+    }
+  }
+}
+
+.conversation-area {
+  position: fixed;
+  top: 132px; // 默认从 toggle-btn 下方开始 (折叠状态)
+  bottom: 100px; // 完成按钮区域的高度
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1; // 默认层级
+  
+  // 当练习信息展开时，调整顶部位置
+  &.with-expanded-info {
+    top: 432px; // header + toggle-btn + exercise-info 的总高度
+  }
+  
+  // 当录音激活时，提升层级以显示高亮消息
+  &.recording-active {
+    z-index: 9997; // 低于遮罩层，但允许内部元素超越
+  }
+  
+  // 首次进入时，底部不需要留空间
+  &.first-time {
+    bottom: 0;
+  }
+  
+  .messages-container {
+    padding: 0 30px 20px 30px;
+    
+    // 生成练习按钮容器
+    .generate-exercise-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 60vh;
+      gap: 40px;
+      
+      // 角色选择
+      .role-selection {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        
+        .role-selection-title {
+          font-size: 32px;
+          font-weight: bold;
+          color: #333;
+          text-align: center;
+        }
+        
+        .role-hint {
+          font-size: 24px;
+          color: #999;
+          text-align: center;
+          margin-top: 20px;
+          font-style: italic;
+        }
+        
+        .role-buttons {
+          display: flex;
+          gap: 20px;
+          
+          .role-btn {
+            width: 140px !important;
+            height: 56px !important;
+            border-radius: 16px !important;
+            font-size: 28px !important;
+            font-weight: 600 !important;
+            transition: all 0.3s ease !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            
+            &.selected {
+              background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+              color: white !important;
+              border: none !important;
+              box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3) !important;
+              
+              &:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4) !important;
+              }
+            }
+            
+            &:not(.selected) {
+              background: #f3f4f6 !important;
+              color: #6b7280 !important;
+              border: 2px solid #e5e7eb !important;
+              
+              &:hover {
+                background: #e5e7eb !important;
+                border-color: #d1d5db !important;
+                transform: translateY(-1px) !important;
+              }
+            }
+          }
+        }
+      }
+      
+      .generate-exercise-btn {
+        width: 280px !important;
+        height: 280px !important;
+        border-radius: 50% !important;
+        background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%) !important;
+        border: none !important;
+        box-shadow: 0 10px 40px rgba(82, 196, 26, 0.4) !important;
+        transition: all 0.3s ease !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        
+        &:active {
+          transform: scale(0.95);
+          box-shadow: 0 5px 20px rgba(82, 196, 26, 0.3) !important;
+        }
+        
+        .generate-btn-content {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 15px !important;
+          width: 100% !important;
+          height: 100% !important;
+          
+          .generate-btn-text {
+            font-size: 32px !important;
+            font-weight: bold !important;
+            color: white !important;
+            margin-top: 5px !important;
+            line-height: 1 !important;
+          }
+        }
+      }
+    }
+    
+    .message-wrapper {
+      margin-bottom: 30px;
+      
+      &.user-message-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      
+      &.ai-message-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      // 录音高亮状态 - 显示在遮罩层之上
+      &.recording-highlight {
+        position: relative;
+        z-index: 9999; // 在遮罩层之上，但在录音控制器之下
+        
+        .message {
+          background: rgba(255, 255, 255, 0.1); // 轻微的背景色
+          border-radius: 16px;
+          padding: 10px;
+        }
+        
+        .message-bubble {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+          color: white !important;
+          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.5) !important;
+          animation: pulse 2s ease-in-out infinite;
+          transform: scale(1.05); // 稍微放大
+        }
+        
+        .record-action-btn {
+          background: #52c41a !important;
+          color: white !important;
+          box-shadow: 0 4px 12px rgba(82, 196, 26, 0.4) !important;
+          font-weight: bold;
+        }
+      }
+    }
+    
+    .message {
+      display: flex;
+      
+      &.user-message {
+        justify-content: flex-end;
+        
+        .message-content {
+          align-items: flex-end;
+          
+          .message-bubble {
+            background: #e6f7ff;
+            color: #333;
+            border-radius: 20px 20px 5px 20px;
+          }
+        }
+      }
+      
+      &.ai-message {
+        justify-content: flex-start;
+        
+        .avatar {
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          margin-right: 15px;
+          border: 3px solid #fff;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .message-content {
+          align-items: flex-start;
+          
+          .message-bubble {
+            background: white;
+            color: #333;
+            border-radius: 20px 20px 20px 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          }
+        }
+      }
+      
+      .message-content {
+        display: flex;
+        flex-direction: column;
+        max-width: 70%;
+        
+        .message-bubble {
+          padding: 15px 20px;
+          margin-bottom: 10px;
+          transition: all 0.3s ease;
+          
+          .message-text {
+            font-size: 26px;
+            line-height: 1.5;
+          }
+        }
+        
+        // 用户消息气泡动画
+        &.user-message .message-bubble {
+          animation: slideInFromRight 0.5s ease-out;
+        }
+        
+        // AI消息气泡动画
+        &.ai-message .message-bubble {
+          animation: slideInFromLeft 0.5s ease-out;
+        }
+        
+        // 动态动画类
+        .message-bubble.animate-in {
+          animation: slideInFromRight 0.5s ease-out;
+        }
+        
+        .play-btn {
+          align-self: flex-start;
+          background: #f0f0f0 !important;
+          color: #666 !important;
+          border: none !important;
+          border-radius: 15px !important;
+          font-size: 22px !important;
+          padding: 8px 16px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          line-height: 1 !important;
+          
+          // 禁用状态样式
+          &.at-button--disabled {
+            opacity: 0.4 !important;
+            background: #e0e0e0 !important;
+            color: #999 !important;
+            cursor: not-allowed !important;
+          }
+        }
+      }
+    }
+    
+    // 录音按钮包装器
+    .record-action-btn-wrapper {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+      
+      .record-action-btn {
+        font-size: 26px;
+        color: #667eea;
+        cursor: pointer;
+        padding: 8px 16px;
+        transition: all 0.2s ease;
+        
+        &:active {
+          opacity: 0.7;
+          transform: scale(0.98);
+        }
+      }
+    }
+  }
+}
+
+// 录音模态框
+.recording-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85); // 加深背景色，去掉模糊效果以避免层级问题
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9998;
+  animation: fadeIn 0.3s ease-out;
+  
+  .recording-modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    margin-top: -100px; // 向上偏移一点，更接近中心下方
+    position: relative;
+    z-index: 10000; // 确保录音控制器在最上层
+    
+    .recording-circle {
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: #52c41a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 40px rgba(82, 196, 26, 0.4);
+      
+      &:active {
+        transform: scale(0.95);
+      }
+      
+      &.recording-active {
+        background: #ff4d4f;
+        box-shadow: 0 10px 40px rgba(255, 77, 79, 0.4);
+        animation: pulse 1.5s infinite;
+        
+        .icon-bounce {
+          animation: bounce 0.8s infinite;
+        }
+      }
+    }
+    
+    .recording-modal-text {
+      font-size: 32px;
+      font-weight: bold;
+      color: white;
+      text-align: center;
+    }
+  }
+}
+
+.complete-section {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 99;
+  padding: 15px 30px 30px;
+  background: #f5f7fa;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  
+  .at-button {
+    width: 100%;
+    background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%) !important;
+    border: none !important;
+    border-radius: 15px !important;
+    font-size: 28px !important;
+    font-weight: bold !important;
+    height: 80px !important;
+    
+    &.at-button--disabled {
+      background: linear-gradient(135deg, #d9d9d9 0%, #bfbfbf 100%) !important;
+      opacity: 0.6 !important;
+      cursor: not-allowed !important;
+    }
+  }
+  
+  .complete-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%) !important;
+    border: none !important;
+    border-radius: 15px !important;
+    font-size: 28px !important;
+    font-weight: bold !important;
+    height: 80px !important;
+  }
+}
+
+// 语音气泡样式
+.voice-bubble {
+  background: #e6f7ff;
+  color: #333;
+  border-radius: 20px 20px 5px 20px;
+  padding: 15px 20px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 120px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+
+  // 禁用状态样式
+  &.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #e0e0e0;
+
+    &:active {
+      opacity: 0.4;
+      transform: none;
+    }
+
+    .voice-duration {
+      color: #999;
+    }
+
+    .voice-icon-wrapper {
+      opacity: 0.5;
+    }
+  }
+
+  .voice-duration {
+    font-size: 26px;
+    color: #333;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  .voice-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+
+    .wifi-icon {
+      font-size: 24px;
+      color: #667eea;
+      line-height: 1;
+    }
+  }
+}
+
+// 转文字气泡
+.transcription-bubble {
+  margin-top: 8px;
+  margin-bottom: 10px;
+}
+
+// 转文字按钮
+.transcribe-btn {
+  align-self: flex-start;
+  background: #f0f0f0 !important;
+  color: #666 !important;
+  border: none !important;
+  border-radius: 15px !important;
+  font-size: 22px !important;
+  padding: 8px 16px !important;
+}
+
+// 流式输出指示器
+.streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+
+  .streaming-dot {
+    color: #52c41a;
+    font-size: 16px;
+    animation: blink 1s infinite;
+  }
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-50px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+// Taro UI 组件样式覆盖
+.at-card {
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+}
+
+.at-button {
+  border-radius: 15px !important;
+}
+
+// 生成练习按钮特殊样式覆盖
+.conversation-page .at-button.generate-exercise-btn {
+  width: 280px !important;
+  height: 280px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%) !important;
+  border: none !important;
+  box-shadow: 0 10px 40px rgba(82, 196, 26, 0.4) !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  
+  .at-button__text {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 15px !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+// 角色选择按钮样式覆盖
+.conversation-page .at-button.role-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  
+  .at-button__text {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+// 加载遮罩层样式
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+
+  .loading-content {
+    background: white;
+    border-radius: 30px;
+    padding: 60px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: fadeInScale 0.3s ease-out;
+
+    .loading-tip {
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+      text-align: center;
+      order: 1; // 文字排在第一位
+    }
+
+    .loading-subtitle {
+      font-size: 26px;
+      color: #999;
+      text-align: center;
+      order: 2; // 副标题排在第二位
+    }
+    
+    // icon排在最后
+    .at-activity-indicator {
+      order: 3;
+    }
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
