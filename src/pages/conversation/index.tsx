@@ -1963,7 +1963,7 @@ export default class Conversation extends Component {
 
   /**
    * 后台异步生成学习建议内容
-   * 不阻塞用户操作，生成完成后自动更新report
+   * 不阻塞用户操作，持续监听generate接口状态，生成完成后自动更新report
    */
   generateContentInBackground = async (
     reportId: number, 
@@ -1975,6 +1975,7 @@ export default class Conversation extends Component {
   ) => {
     try {
       console.log('🔄 后台任务：开始生成学习建议')
+      console.log('report_id:', reportId, 'exercise_id:', exerciseId)
       
       const { contentAPI, reportAPI } = await import('../../utils/api_v2')
       
@@ -1982,38 +1983,107 @@ export default class Conversation extends Component {
       const soeJsonQuery = JSON.stringify(allSoeResults)
       console.log('🔄 SOE评测结果JSON长度:', soeJsonQuery.length)
       
-      // 调用content/generate接口
+      // 步骤1: 调用content/generate接口启动任务
       const contentResult = await contentAPI.generate(5844, soeJsonQuery)
       
       if (contentResult.success) {
-        const generatedContent = contentResult.data?.content || contentResult.result?.content || ''
-        console.log('✅ 后台任务：学习建议生成成功')
-        console.log('生成内容长度:', generatedContent.length)
+        console.log('✅ 后台任务：生成任务已启动')
         
-        // 更新report的content字段
-        const updateReportData = {
-          id: reportId,
-          exercise_id: exerciseId,
-          name: reportData.name,
-          audio_ids: audioIds,
-          summary: reportData.summary,
-          json_content: jsonContent,
-          content: generatedContent  // 添加生成的学习建议内容
+        // 检查是否直接返回了内容（同步完成）
+        const directContent = contentResult.data?.content || contentResult.result?.content
+        if (directContent) {
+          console.log('✅ 后台任务：学习建议同步生成成功')
+          console.log('生成内容长度:', directContent.length)
+          
+          // 立即保存到report表
+          await this.saveContentToReport(reportId, exerciseId, reportData, audioIds, jsonContent, directContent)
+          return
         }
         
-        const updateResult = await reportAPI.editReport(updateReportData)
-        
-        if (updateResult.success) {
-          console.log('✅ 后台任务：学习建议已保存到report表的content字段')
-          console.log('report_id:', reportId, 'exercise_id:', exerciseId)
+        // 检查是否有task_id（异步任务）
+        const taskId = contentResult.data?.task_id || contentResult.result?.task_id
+        if (taskId) {
+          console.log('🔄 后台任务：检测到异步任务，开始轮询监听')
+          console.log('task_id:', taskId)
+          
+          // 步骤2: 持续监听任务状态直到完成
+          const pollResult = await contentAPI.pollUntilComplete(taskId)
+          
+          if (pollResult.success && pollResult.content) {
+            console.log('✅ 后台任务：学习建议异步生成成功')
+            console.log('生成内容长度:', pollResult.content.length)
+            
+            // 步骤3: 立即保存到report表
+            await this.saveContentToReport(reportId, exerciseId, reportData, audioIds, jsonContent, pollResult.content)
+          } else {
+            console.log('❌ 后台任务：学习建议生成失败')
+            console.log('失败原因:', pollResult.error || '未知错误')
+          }
         } else {
-          console.log('⚠️  后台任务：保存学习建议失败:', updateResult.message)
+          console.log('⚠️  后台任务：未获取到task_id，无法进行状态监听')
         }
       } else {
-        console.log('⚠️  后台任务：生成学习建议失败:', contentResult.message)
+        console.log('⚠️  后台任务：启动生成任务失败:', contentResult.message)
       }
     } catch (contentError) {
       console.error('❌ 后台任务：生成学习建议失败:', contentError)
+    }
+  }
+
+  /**
+   * 保存生成的内容到report表
+   */
+  saveContentToReport = async (
+    reportId: number,
+    exerciseId: number,
+    reportData: any,
+    audioIds: number[],
+    jsonContent: string,
+    generatedContent: string
+  ) => {
+    try {
+      console.log('💾 开始保存学习建议到report表...')
+      console.log('report_id:', reportId)
+      console.log('content长度:', generatedContent.length)
+      
+      const { reportAPI } = await import('../../utils/api_v2')
+      
+      // 更新report的content字段
+      const updateReportData = {
+        id: reportId,
+        exercise_id: exerciseId,
+        name: reportData.name,
+        audio_ids: audioIds,
+        summary: reportData.summary,
+        json_content: jsonContent,
+        content: generatedContent  // 保存生成的学习建议内容
+      }
+      
+      console.log('保存参数:', {
+        id: updateReportData.id,
+        exercise_id: updateReportData.exercise_id,
+        content_length: updateReportData.content.length
+      })
+      
+      const updateResult = await reportAPI.editReport(updateReportData)
+      
+      if (updateResult.success) {
+        console.log('✅ 学习建议已成功保存到report表的content字段')
+        console.log('report_id:', reportId, 'exercise_id:', exerciseId)
+        console.log('保存的内容长度:', generatedContent.length)
+        
+        // 可选：触发UI更新通知
+        Taro.showToast({
+          title: '学习建议已生成',
+          icon: 'success',
+          duration: 2000
+        })
+      } else {
+        console.log('❌ 保存学习建议失败:', updateResult.message)
+        console.log('失败详情:', updateResult)
+      }
+    } catch (error) {
+      console.error('❌ 保存学习建议到report表失败:', error)
     }
   }
 

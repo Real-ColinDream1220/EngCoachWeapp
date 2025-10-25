@@ -495,9 +495,13 @@ export default class ExerciseDetail extends Component {
   }
 
   handleViewSummary = () => {
-    const { currentExercise, reportStatus } = this.state
+    console.log('🔥 查看总结按钮被点击了！')
+    const { currentExercise } = this.state
+    
+    console.log('当前练习信息:', currentExercise)
     
     if (!currentExercise || !currentExercise.id) {
+      console.log('❌ 练习信息不完整')
       Taro.showToast({
         title: '练习信息不完整',
         icon: 'none'
@@ -505,30 +509,27 @@ export default class ExerciseDetail extends Component {
       return
     }
     
-    // 检查report状态
-    if (reportStatus === 'generating') {
+    // 获取当前学生ID
+    const studentInfo = Taro.getStorageSync('studentInfo')
+    const studentId = studentInfo?.id
+    
+    if (!studentId) {
+      console.log('❌ 未找到学生ID')
       Taro.showToast({
-        title: '学习建议生成中，请稍候...',
-        icon: 'loading',
-        duration: 2000
+        title: '未找到学生信息',
+        icon: 'none'
       })
       return
     }
     
-    if (reportStatus === 'empty' || reportStatus === 'unknown') {
-      Taro.showToast({
-        title: '暂无学习建议',
-        icon: 'none',
-        duration: 2000
-      })
-      return
-    }
+    console.log('✅ 跳转到报告页面:', { 
+      exerciseId: currentExercise.id, 
+      studentId: studentId 
+    })
     
-    console.log('查看总结:', { exerciseId: currentExercise.id, reportStatus })
-    
-    // 跳转到报告页面
+    // 直接跳转到报告页面，与teacher页面逻辑一致
     Taro.navigateTo({
-      url: `/pages/report/index?exerciseId=${currentExercise.id}`
+      url: `/pages/report/index?exerciseId=${currentExercise.id}&studentId=${studentId}`
     })
   }
 
@@ -661,7 +662,14 @@ export default class ExerciseDetail extends Component {
               )}
               
               <View className='exercise-actions'>
-                {currentExercise.isCompleted ? (
+                {(() => {
+                  console.log('🔍 检查练习完成状态:', {
+                    exerciseId: currentExercise.id,
+                    exerciseTitle: currentExercise.name || currentExercise.title,
+                    isCompleted: currentExercise.isCompleted
+                  })
+                  return currentExercise.isCompleted
+                })() ? (
                   // 已完成状态：显示"查看总结"和"重新练习"按钮
                   <>
                     <View className='action-btn-wrapper'>
@@ -669,13 +677,9 @@ export default class ExerciseDetail extends Component {
                         type='primary' 
                         onClick={this.handleViewSummary}
                         className='action-btn'
-                        disabled={this.state.reportStatus === 'generating' || this.state.reportStatus === 'empty'}
                       >
-                        {this.state.reportStatus === 'generating' ? '生成中...' : '查看总结'}
+                        查看总结
                       </SafeAtButton>
-                      {this.state.reportStatus === 'generating' && (
-                        <Text className='status-hint'>学习建议生成中，请稍候</Text>
-                      )}
                     </View>
                     <SafeAtButton 
                       type='secondary' 

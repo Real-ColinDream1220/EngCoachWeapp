@@ -17,7 +17,7 @@ export const fileAPI = {
     console.log('开始上传文件:', filePath)
     
     // 获取token - 硬编码的静态token作为备用
-    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjY5MCwiTWFwQ2xhaW1zIjpudWxsLCJSb2xlIjoiUCIsIlN0YWZmSWQiOjAsIlN1YiI6IiIsIlRlc3RlciI6MCwiVVVJRCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIlVpZEhhc2giOiIxMDA2OTAiLCJleHAiOjE3NjI5MzY5MTQsIm9yaWdfaWF0IjoxNzYwMzQ0OTE0fQ._FNQzq1UxuK8H6G38FmBI-BJjwK-Qr0I14MQUEGwyHM'
+    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjIsIk1hcENsYWltcyI6bnVsbCwiUm9sZSI6IlgiLCJTdGFmZklkIjowLCJTdWIiOiIiLCJUZXN0ZXIiOjAsIlVVSUQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJVaWRIYXNoIjoiMTAwMDAyIiwiZXhwIjoxNzYzOTk5NTk3LCJvcmlnX2lhdCI6MTc2MTQwNzU5N30.0jrur8RvQwV80ablGjJcCTa_X0nJTi77R2ccTiTywaQ'
     const storageToken = Taro.getStorageSync('token')
     const token = storageToken || staticToken
     
