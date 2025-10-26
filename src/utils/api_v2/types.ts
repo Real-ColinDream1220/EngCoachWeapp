@@ -233,29 +233,3 @@ export interface VoicePackResponse {
   success: boolean
 }
 
-// ===== 自由练习相关类型 =====
-
-// 自由练习音频类型
-export interface SpeechAudio {
-  id?: number
-  unit_id: number
-  student_id: number
-  file: string           // 音频文件URL
-  duration?: number      // 音频时长（秒）
-  evaluation?: string    // AI评价文本
-  ref_text?: string      // 语音识别出来的文本
-  created_at?: string
-  updated_at?: string
-}
-
-// 自由练习报告类型
-export interface SpeechReport {
-  id?: number
-  unit_id: number
-  student_id: number
-  audio_ids: number[]    // 音频ID数组
-  content?: string       // 整体AI分析建议
-  created_at?: string
-  updated_at?: string
-}
-

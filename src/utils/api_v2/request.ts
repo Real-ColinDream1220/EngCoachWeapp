@@ -48,15 +48,31 @@ export const request = async <T = any>(config: RequestConfig): Promise<ApiRespon
     console.log('未找到token')
   }
   
-  // 构建完整URL
-  const fullUrl = url.startsWith('http') ? url : `${BASE_URL}${url}`
+  // 构建完整URL（GET 和 DELETE 需要手动拼接 query string）
+  let fullUrl = url.startsWith('http') ? url : `${BASE_URL}${url}`
+  
+  // 对于 GET 和 DELETE 请求，将 params 拼接到 URL
+  if ((method === 'GET' || method === 'DELETE') && params) {
+    const queryString = Object.keys(params)
+      .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+      .join('&')
+    fullUrl = `${fullUrl}?${queryString}`
+    console.log('拼接 query string:', queryString)
+  }
+  
   console.log('完整URL:', fullUrl)
   
   try {
+    // POST 和 PUT 使用 data (request body)
+    const requestData = (method === 'POST' || method === 'PUT') ? data : undefined
+    
+    console.log('请求数据:', requestData)
+    console.log('请求方法:', method)
+    
     const response = await Taro.request({
       url: fullUrl,
       method,
-      data: method === 'GET' ? params : data,
+      data: requestData,  // GET/DELETE 不传 data，参数已在 URL 中
       header: {
         'Content-Type': 'application/json',
         ...headers

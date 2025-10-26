@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { View, Text, ScrollView, Image, Input } from '@tarojs/components'
+import { View, Text, ScrollView, Image } from '@tarojs/components'
 import { AtButton, AtCard, AtTag, AtDivider, AtToast, AtIcon, AtActivityIndicator } from 'taro-ui'
 
 // Safety check for taro-ui components
@@ -271,21 +271,7 @@ export default class Conversation extends Component {
     scrollIntoViewId: '' as string, // 需要滚动到的消息ID
     playingDigitalVoiceId: null as number | null, // 正在播放的数字人语音消息ID
     digitalVoiceIconIndex: 0, // 数字人语音图标索引
-    preloadedVoiceUrls: {} as Record<number, string>, // 预加载的数字人语音URL缓存
-    // 自由对话模式相关
-    mode: 'structured' as 'structured' | 'free', // 对话模式：structured=结构化练习，free=自由对话
-    unitId: '', // 单元ID（自由对话使用）
-    userInputText: '', // 用户输入的文本（实时识别填充）
-    isSendingMessage: false, // 是否正在发送消息
-    // 语音识别相关
-    nlsToken: '', // 阿里云 NLS Token
-    nlsAppKey: 'tRAwRgCPdmM3pqeJ', // 硬编码 AppKey
-    isVoiceRecognizing: false, // 是否正在语音识别
-    isLongPressing: false, // 是否正在长按
-    currentRecordingPath: '', // 当前录音文件路径
-    currentRecordingDuration: 0, // 当前录音时长
-    currentRecordingWavPath: '', // 当前录音的WAV文件路径
-    freeRecordedMessages: {} as Record<number, any> // 自由对话录音记录
+    preloadedVoiceUrls: {} as Record<number, string> // 预加载的数字人语音URL缓存
   }
 
   voiceAnimationTimer: any = null // 语音播放动画定时器
@@ -293,10 +279,6 @@ export default class Conversation extends Component {
   recorderManager: any = null // 录音管理器实例
   audioContext: any = null // 音频播放器实例（用于播放用户录音）
   digitalVoiceContext: any = null // 数字人语音播放器实例
-  voiceService: any = null // 语音识别服务实例
-  longPressTimer: any = null // 长按定时器
-  recordingStartTime: number = 0 // 录音开始时间
-  pendingMessage: any = null // 待发送的消息（等待WAV文件生成）
 
   componentDidMount() {
     // 检查登录状态
@@ -327,29 +309,14 @@ export default class Conversation extends Component {
     console.log('✅ 数字人语音播放器初始化完成')
     
     const instance = Taro.getCurrentInstance()
-    const { unitId, exerciseId, mode } = instance?.router?.params || {}
-    
-    // 判断是自由对话模式还是结构化练习模式
-    const isFreeMode = mode === 'free'
-    
+    const { unitId, exerciseId } = instance?.router?.params || {}
     this.setState({
       chapterId: unitId || '',  // 兼容旧的chapterId字段
-      exerciseId: exerciseId || '',
-      mode: isFreeMode ? 'free' : 'structured',
-      unitId: unitId || '',
-      isFirstTime: !isFreeMode // 自由对话模式不显示首次欢迎
+      exerciseId: exerciseId || ''
     })
     
-    if (isFreeMode) {
-      // 自由对话模式：初始化自由对话
-      console.log('=== 自由对话模式 ===')
-      console.log('unitId:', unitId)
-      this.startFreeConversation(unitId || '')
-    } else {
-      // 结构化练习模式：加载练习数据
-      this.loadExerciseData(exerciseId || '')
-      // 首次进入不自动加载对话，等待用户点击生成练习按钮
-    }
+    this.loadExerciseData(exerciseId || '')
+    // 首次进入不自动加载对话，等待用户点击生成练习按钮
   }
 
   loadExerciseData = (exerciseId: string) => {
@@ -817,13 +784,10 @@ export default class Conversation extends Component {
             console.log('保存路径:', savedFilePath)
             console.log('文件名:', savedFileName)
             
-            // 检查是否覆盖了之前的录音（判断是否为重新录音）
-            const isReRecording = !!recordedMessages[currentRecordingMessageId!]
-            if (isReRecording) {
-              console.log('⚠️  这是重新录音，覆盖了之前的录音')
+            // 检查是否覆盖了之前的录音
+            if (recordedMessages[currentRecordingMessageId!]) {
+              console.log('⚠️  覆盖了之前的录音，保持一对一关系')
               console.log('旧录音路径:', recordedMessages[currentRecordingMessageId!].localFilePath)
-            } else {
-              console.log('✅ 这是首次录音')
             }
             console.log('===============')
             
@@ -853,25 +817,19 @@ export default class Conversation extends Component {
                 icon: 'success'
               })
               
-              // 关闭模态框
+              // 关闭模态框并触发AI回复
               setTimeout(() => {
                 this.setState({
                   showRecordingModal: false,
                   currentRecordingMessageId: null
                 })
                 
-                // 🔥 只有首次录音时才触发AI回复，重新录音不触发
-                if (!isReRecording) {
-                  console.log('=== 首次录音完成，准备触发AI回复 ===')
-                  console.log('当前角色:', this.state.selectedRole === 'questioner' ? '提问者' : '回答者')
-                  console.log('===============================')
-                  
-                  // 触发AI回复
-                  this.startAIResponse()
-                } else {
-                  console.log('=== 重新录音完成，不触发AI回复 ===')
-                  console.log('===============================')
-                }
+                console.log('=== 录音完成，准备触发AI回复 ===')
+                console.log('当前角色:', this.state.selectedRole === 'questioner' ? '提问者' : '回答者')
+                console.log('===============================')
+                
+                // 触发AI回复
+                this.startAIResponse()
               }, 500)
             }
           },
@@ -1194,90 +1152,7 @@ export default class Conversation extends Component {
     this.setState({ messages: updatedMessages })
   }
 
-  // 播放自由对话录音
-  handlePlayFreeVoice = (messageId: number) => {
-    const { playingVoiceId, playingDigitalVoiceId, freeRecordedMessages } = this.state
-    
-    // 如果正在播放数字人语音，不允许播放用户录音
-    if (playingDigitalVoiceId !== null) {
-      console.log('⚠️  数字人语音正在播放，无法播放录音')
-      Taro.showToast({
-        title: '请等待当前音频播放完成',
-        icon: 'none'
-      })
-      return
-    }
-    
-    // 如果正在播放这条消息，则停止播放
-    if (playingVoiceId === messageId) {
-      console.log('⏸️  停止播放')
-      this.stopVoicePlayback()
-      return
-    }
-    
-    // 停止之前的播放
-    if (playingVoiceId !== null) {
-      this.stopVoicePlayback()
-    }
-    
-    // 获取该消息的录音数据
-    const recordedData = freeRecordedMessages[messageId]
-    if (!recordedData) {
-      console.warn('⚠️  消息未录音，无法播放')
-      Taro.showToast({
-        title: '该消息未录音',
-        icon: 'none'
-      })
-      return
-    }
-    
-    const audioPath = recordedData.localFilePath
-    
-    if (!audioPath) {
-      console.warn('⚠️  未找到录音文件路径')
-      Taro.showToast({
-        title: '录音文件不存在',
-        icon: 'none'
-      })
-      return
-    }
-    
-    console.log('▶️  播放自由对话录音:', audioPath)
-    
-    // 设置播放状态
-    this.setState({ playingVoiceId: messageId })
-    
-    // 开始动画
-    this.startVoiceAnimation()
-    
-    // 创建内部音频播放器
-    const innerAudioContext = Taro.createInnerAudioContext()
-    this.audioContext = innerAudioContext
-    
-    innerAudioContext.src = audioPath
-    
-    innerAudioContext.onPlay(() => {
-      console.log('✅ 自由对话录音开始播放')
-    })
-    
-    innerAudioContext.onEnded(() => {
-      console.log('✅ 自由对话录音播放完成')
-      this.stopVoicePlayback()
-    })
-    
-    innerAudioContext.onError((err) => {
-      console.error('❌ 自由对话录音播放失败:', err)
-      this.stopVoicePlayback()
-      Taro.showToast({
-        title: '播放失败',
-        icon: 'none'
-      })
-    })
-    
-    innerAudioContext.play()
-  }
-  
-  // 播放语音消息（结构化练习）
+  // 播放语音消息
   handlePlayVoice = (messageId: number) => {
     const { playingVoiceId, playingDigitalVoiceId, recordedMessages } = this.state
     
@@ -1690,834 +1565,6 @@ export default class Conversation extends Component {
     }, 2000)
   }
 
-  // ====== 自由对话相关方法 ======
-  
-  /**
-   * 获取 NLS Token
-   */
-  fetchNlsToken = async (): Promise<void> => {
-    try {
-      console.log('开始获取 NLS Token...')
-      const { nlsAPI } = await import('../../utils/api_v2')
-      
-      const response = await nlsAPI.getNlsToken()
-      console.log('📦 NLS API 响应:', response)
-      
-      // 从响应中提取 token
-      const tokenInfo = (response as any).data?.Token || (response as any).result?.Token
-      console.log('📦 Token Info:', tokenInfo)
-      
-      if (tokenInfo && tokenInfo.Id) {
-        this.setState({ nlsToken: tokenInfo.Id })
-        console.log('✅ NLS Token 获取成功')
-        console.log('Token ID:', tokenInfo.Id)
-        console.log('User ID:', tokenInfo.UserId)
-        console.log('过期时间:', new Date(tokenInfo.ExpireTime * 1000))
-        console.log('当前时间:', new Date())
-      } else {
-        console.error('❌ Token 数据结构:', { response, tokenInfo })
-        throw new Error('Token 数据格式错误')
-      }
-    } catch (error) {
-      console.error('❌ 获取 NLS Token 失败:', error)
-      Taro.showToast({
-        title: '语音服务初始化失败',
-        icon: 'none'
-      })
-    }
-  }
-  
-  /**
-   * 初始化语音识别服务（使用增强版，同时生成WAV文件）
-   */
-  initVoiceService = async (): Promise<void> => {
-    const { nlsToken, nlsAppKey } = this.state
-    
-    console.log('=== 初始化语音识别服务（增强版） ===')
-    console.log('Token:', nlsToken ? `${nlsToken.substring(0, 20)}...` : 'null')
-    console.log('AppKey:', nlsAppKey)
-    
-    if (!nlsToken) {
-      console.error('❌ NLS Token 未获取')
-      return
-    }
-    
-    try {
-      // 动态导入增强版语音识别服务（支持WAV导出）
-      const { TaroVoiceRecognitionWithWav } = await import('../../utils/voiceRecognition/TaroVoiceRecognitionWithWav')
-      
-      // 销毁旧实例
-      if (this.voiceService) {
-        this.voiceService.destroy()
-      }
-      
-      // 创建新实例（增强版，支持WAV导出）
-      this.voiceService = new TaroVoiceRecognitionWithWav(
-        {
-          token: nlsToken,
-          appKey: nlsAppKey,
-          socketUrl: 'wss://nls-gateway.cn-shanghai.aliyuncs.com/ws/v1',
-          autoStopDelay: 2000,
-          enableWavExport: true  // 启用WAV导出
-        },
-        {
-          onResult: this.handleVoiceResult,
-          onError: (error) => {
-            console.error('❌ 语音识别错误:', error)
-            this.setState({ isVoiceRecognizing: false, isLongPressing: false })
-            Taro.showToast({
-              title: error,
-              icon: 'none'
-            })
-          },
-          onStarted: () => {
-            console.log('✅ 语音识别开始')
-            this.setState({ isVoiceRecognizing: true })
-          },
-          onStopped: () => {
-            console.log('✅ 语音识别停止')
-            this.setState({ isVoiceRecognizing: false })
-          },
-          onWavReady: (wavFilePath) => {
-            // WAV文件生成完成，保存路径
-            console.log('✅ WAV文件已生成:', wavFilePath)
-            this.setState({ currentRecordingWavPath: wavFilePath })
-            
-            // 检查是否有待发送的消息
-            if (this.pendingMessage) {
-              console.log('📤 WAV文件已生成，发送待发送的消息')
-              const { text, duration } = this.pendingMessage
-              this.pendingMessage = null // 清空待发送消息
-              this.sendFreeMessageWithRecording(text, duration)
-            }
-          }
-        }
-      )
-      
-      console.log('✅ 语音识别服务初始化完成（增强版，支持WAV导出）')
-    } catch (error) {
-      console.error('❌ 初始化语音识别服务失败:', error)
-    }
-  }
-  
-  /**
-   * 处理语音识别结果
-   */
-  handleVoiceResult = (text: string, isFinal: boolean) => {
-    console.log('语音识别结果:', text, 'isFinal:', isFinal)
-    
-    // 实时更新识别文本到输入框
-    this.setState({ userInputText: text })
-  }
-  
-  /**
-   * 长按开始录音
-   */
-  handleLongPressStart = async (e: any) => {
-    e.stopPropagation()
-    
-    const { isVoiceRecognizing, nlsToken } = this.state
-    
-    if (isVoiceRecognizing) {
-      return
-    }
-    
-    // 初始化语音服务（如果还没初始化）
-    if (!this.voiceService && nlsToken) {
-      await this.initVoiceService()
-    }
-    
-    // 设置长按标记
-    this.longPressTimer = setTimeout(async () => {
-      console.log('=== 长按500ms，开始录音 ===')
-      this.setState({ isLongPressing: true, userInputText: '' })
-      this.recordingStartTime = Date.now()
-      
-      // 开始语音识别
-      if (this.voiceService) {
-        try {
-          await this.voiceService.start()
-        } catch (error) {
-          console.error('❌ 启动语音识别失败:', error)
-          this.setState({ isLongPressing: false })
-        }
-      } else {
-        Taro.showToast({
-          title: '语音服务未就绪',
-          icon: 'none'
-        })
-        this.setState({ isLongPressing: false })
-      }
-    }, 500) // 500ms 长按阈值
-  }
-  
-  /**
-   * 长按结束，停止录音并发送消息
-   */
-  handleLongPressEnd = async (e: any) => {
-    e.stopPropagation()
-    
-    // 清除长按定时器
-    if (this.longPressTimer) {
-      clearTimeout(this.longPressTimer)
-      this.longPressTimer = null
-    }
-    
-    const { isLongPressing, userInputText } = this.state
-    
-    if (!isLongPressing) {
-      return
-    }
-    
-    console.log('=== 松手，停止录音 ===')
-    
-    // 计算录音时长
-    const duration = (Date.now() - this.recordingStartTime) / 1000
-    
-    this.setState({ isLongPressing: false })
-    
-    // 如果识别到文本，等待WAV生成后再发送
-    if (userInputText.trim()) {
-      // 保存识别文本和时长，等待 onWavReady 回调
-      this.pendingMessage = {
-        text: userInputText,
-        duration: duration
-      }
-      console.log('📝 保存待发送消息，等待WAV文件生成...')
-    } else {
-      Taro.showToast({
-        title: '未识别到语音',
-        icon: 'none'
-      })
-    }
-    
-    // 停止语音识别（会触发 onWavReady）
-    if (this.voiceService) {
-      this.voiceService.stop()
-    }
-  }
-  
-  /**
-   * 发送自由对话消息（带录音）
-   */
-  sendFreeMessageWithRecording = async (text: string, duration: number) => {
-    const { tid, messages, currentRecordingWavPath } = this.state
-    
-    if (!text.trim() || !tid) {
-      return
-    }
-    
-    try {
-      this.setState({ isSendingMessage: true })
-      
-      // 1. 创建用户消息
-      const userMessageId = Date.now()
-      const userMessage = {
-        id: userMessageId,
-        text: text,
-        isUser: true,
-        timestamp: Date.now(),
-        hidden: false
-      }
-      
-      // 2. 保存录音记录（用于完成练习时上传）
-      const { freeRecordedMessages } = this.state
-      freeRecordedMessages[userMessageId] = {
-        messageId: userMessageId,
-        recognizedText: text,  // 识别出的文本
-        duration: duration,
-        localFilePath: currentRecordingWavPath,  // ✅ 保存WAV文件路径
-        timestamp: Date.now()
-      }
-      
-      console.log('✅ 保存录音记录:')
-      console.log('  - 消息ID:', userMessageId)
-      console.log('  - 识别文本:', text)
-      console.log('  - 时长:', duration, '秒')
-      console.log('  - WAV文件:', currentRecordingWavPath)
-      
-      this.setState({
-        messages: [...messages, userMessage],
-        userInputText: '',
-        freeRecordedMessages
-      })
-      
-      console.log('=== 用户发送消息（自由对话）===')
-      console.log('识别文本:', text)
-      console.log('录音时长:', duration)
-      
-      // 3. 创建 AI 消息占位符
-      const aiMessageId = Date.now() + 1
-      const aiMessage = {
-        id: aiMessageId,
-        text: '',
-        isUser: false,
-        timestamp: Date.now(),
-        hidden: false,
-        isStreaming: true
-      }
-      
-      this.setState({
-        messages: [...messages, userMessage, aiMessage],
-        streamingMessageId: aiMessageId,
-        isStreaming: true,
-        isAIResponding: true
-      })
-      
-      // 4. 调用 ai_completion 接口
-      const { aiChatAPI } = await import('../../utils/api_v2')
-      let aiResponseText = ''
-      
-      await aiChatAPI.completions({
-        tid,
-        text: text,  // 使用识别文本作为消息
-        onMessage: (chunk: string) => {
-          aiResponseText += chunk
-          
-          // 更新流式消息
-          this.setState((prevState: any) => ({
-            messages: prevState.messages.map((msg: any) =>
-              msg.id === aiMessageId
-                ? { ...msg, text: aiResponseText }
-                : msg
-            )
-          }))
-        },
-        onComplete: () => {
-          console.log('✅ AI 回复完成')
-          
-          // 完成流式输出
-          this.setState((prevState: any) => ({
-            messages: prevState.messages.map((msg: any) =>
-              msg.id === aiMessageId
-                ? { ...msg, isStreaming: false }
-                : msg
-            ),
-            isAIResponding: false,
-            isStreaming: false,
-            streamingMessageId: null,
-            isSendingMessage: false
-          }))
-        },
-        onError: (error: any) => {
-          console.error('❌ AI 回复失败:', error)
-          this.setState({
-            isAIResponding: false,
-            isStreaming: false,
-            streamingMessageId: null,
-            isSendingMessage: false
-          })
-          Taro.showToast({
-            title: '发送失败',
-            icon: 'none'
-          })
-        }
-      })
-      
-    } catch (error) {
-      console.error('❌ 发送消息失败:', error)
-      this.setState({
-        isAIResponding: false,
-        isSendingMessage: false
-      })
-    }
-  }
-  
-  /**
-   * 开始自由对话
-   * @param unitId 单元ID
-   */
-  startFreeConversation = async (unitId: string) => {
-    try {
-      this.setState({ isLoadingConversation: true })
-      
-      // 0. 获取 NLS Token
-      console.log('=== 步骤0: 获取 NLS Token ===')
-      await this.fetchNlsToken()
-      
-      // 1. 加载单元下的所有练习
-      console.log('=== 步骤1: 加载单元练习数据 ===')
-      const { exerciseAPI, aiChatAPI } = await import('../../utils/api_v2')
-      
-      const exercisesResponse = await exerciseAPI.getExerciseList(Number(unitId))
-      const exercisesData = exercisesResponse.data || exercisesResponse.result
-      const exercises = Array.isArray(exercisesData) ? exercisesData : []
-      
-      console.log(`获取到 ${exercises.length} 个练习`)
-      
-      // 2. 拼接第一条消息：vocabs:[...],content:[...],vocabs:[...],content:[...]
-      console.log('=== 步骤2: 拼接上下文消息 ===')
-      const contextParts: string[] = []
-      
-      exercises.forEach((exercise: any, index: number) => {
-        // 提取 vocabs
-        const vocabs = exercise.vocabs || []
-        const vocabsStr = `vocabs:[${vocabs.map((v: string) => `"${v}"`).join(',')}]`
-        
-        // 提取 content
-        const content = exercise.content || []
-        const contentStr = `content:[${content.map((c: string) => `"${c}"`).join(',')}]`
-        
-        contextParts.push(vocabsStr)
-        contextParts.push(contentStr)
-        
-        console.log(`练习${index + 1}: ${exercise.name || exercise.title}`)
-        console.log(`  - vocabs: ${vocabs.length} 个`)
-        console.log(`  - content: ${content.length} 条`)
-      })
-      
-      const contextMessage = contextParts.join(',')
-      console.log('上下文消息长度:', contextMessage.length)
-      console.log('上下文消息预览:', contextMessage.substring(0, 200) + '...')
-      
-      // 3. 调用 topic_edit 获取 tid
-      console.log('=== 步骤3: 获取对话 tid ===')
-      const topicResponse = await aiChatAPI.topicEdit()
-      const tid = topicResponse.data?.id || topicResponse.result?.id
-      
-      if (!tid) {
-        throw new Error('获取 tid 失败')
-      }
-      
-      console.log('获取到 tid:', tid)
-      this.setState({ tid })
-      
-      // 4. 发送第一条消息（后台，不显示）
-      console.log('=== 步骤4: 发送上下文消息（后台） ===')
-      
-      Taro.showLoading({
-        title: '初始化对话中...',
-        mask: true
-      })
-      
-      let aiResponseText = ''
-      
-      await aiChatAPI.completions({
-        tid,
-        text: contextMessage,
-        onMessage: (chunk: string) => {
-          aiResponseText += chunk
-        },
-        onComplete: () => {
-          console.log('✅ 上下文消息发送完成')
-          console.log('AI 回复长度:', aiResponseText.length)
-          
-          // 5. 将 AI 的第一条回复添加到消息列表
-          const aiMessage = {
-            id: Date.now(),
-            text: aiResponseText,
-            isUser: false,
-            timestamp: Date.now(),
-            hidden: false
-          }
-          
-          this.setState({
-            messages: [aiMessage],
-            isLoadingConversation: false,
-            isFirstTime: false
-          })
-          
-          console.log('=== 自由对话初始化完成 ===')
-          Taro.hideLoading()
-        },
-        onError: (error: any) => {
-          console.error('❌ 发送上下文消息失败:', error)
-          this.setState({ isLoadingConversation: false })
-          Taro.hideLoading()
-          Taro.showToast({
-            title: '初始化失败',
-            icon: 'none'
-          })
-        }
-      })
-      
-    } catch (error) {
-      console.error('❌ 启动自由对话失败:', error)
-      this.setState({ isLoadingConversation: false })
-      Taro.hideLoading()
-      Taro.showToast({
-        title: '启动失败',
-        icon: 'none'
-      })
-    }
-  }
-  
-  /**
-   * 发送用户消息（自由对话）
-   */
-  sendFreeMessage = async () => {
-    const { userInputText, tid, messages, isSendingMessage } = this.state
-    
-    if (!userInputText.trim()) {
-      Taro.showToast({
-        title: '请输入消息',
-        icon: 'none'
-      })
-      return
-    }
-    
-    if (isSendingMessage) {
-      return
-    }
-    
-    if (!tid) {
-      Taro.showToast({
-        title: '对话未初始化',
-        icon: 'none'
-      })
-      return
-    }
-    
-    try {
-      this.setState({ isSendingMessage: true })
-      
-      // 1. 添加用户消息到列表
-      const userMessage = {
-        id: Date.now(),
-        text: userInputText,
-        isUser: true,
-        timestamp: Date.now(),
-        hidden: false
-      }
-      
-      this.setState({
-        messages: [...messages, userMessage],
-        userInputText: '', // 清空输入框
-        isAIResponding: true
-      })
-      
-      console.log('=== 用户发送消息 ===')
-      console.log('消息内容:', userInputText)
-      
-      // 2. 创建 AI 消息占位符
-      const aiMessageId = Date.now() + 1
-      const aiMessage = {
-        id: aiMessageId,
-        text: '',
-        isUser: false,
-        timestamp: Date.now(),
-        hidden: false,
-        isStreaming: true
-      }
-      
-      this.setState({
-        messages: [...messages, userMessage, aiMessage],
-        streamingMessageId: aiMessageId,
-        isStreaming: true
-      })
-      
-      // 3. 调用 completions 接口
-      const { aiChatAPI } = await import('../../utils/api_v2')
-      let aiResponseText = ''
-      
-      await aiChatAPI.completions({
-        tid,
-        text: userInputText,
-        onMessage: (chunk: string) => {
-          aiResponseText += chunk
-          
-          // 更新流式消息
-          this.setState((prevState: any) => ({
-            messages: prevState.messages.map((msg: any) =>
-              msg.id === aiMessageId
-                ? { ...msg, text: aiResponseText }
-                : msg
-            )
-          }))
-        },
-        onComplete: () => {
-          console.log('✅ AI 回复完成')
-          console.log('回复长度:', aiResponseText.length)
-          
-          // 完成流式输出
-          this.setState((prevState: any) => ({
-            messages: prevState.messages.map((msg: any) =>
-              msg.id === aiMessageId
-                ? { ...msg, isStreaming: false }
-                : msg
-            ),
-            isAIResponding: false,
-            isStreaming: false,
-            streamingMessageId: null,
-            isSendingMessage: false
-          }))
-        },
-        onError: (error: any) => {
-          console.error('❌ AI 回复失败:', error)
-          this.setState({
-            isAIResponding: false,
-            isStreaming: false,
-            streamingMessageId: null,
-            isSendingMessage: false
-          })
-          Taro.showToast({
-            title: '发送失败',
-            icon: 'none'
-          })
-        }
-      })
-      
-    } catch (error) {
-      console.error('❌ 发送消息失败:', error)
-      this.setState({
-        isAIResponding: false,
-        isSendingMessage: false
-      })
-      Taro.showToast({
-        title: '发送失败',
-        icon: 'none'
-      })
-    }
-  }
-  
-  /**
-   * 处理输入框文本变化（已废弃，改用语音识别）
-   */
-  handleInputChange = (e: any) => {
-    this.setState({ userInputText: e.detail.value })
-  }
-  
-  /**
-   * 完成自由练习
-   */
-  handleCompleteFreeExercise = async () => {
-    const { freeRecordedMessages, unitId } = this.state
-    
-    const recordedCount = Object.keys(freeRecordedMessages).length
-    
-    if (recordedCount === 0) {
-      Taro.showToast({
-        title: '还没有录音记录',
-        icon: 'none'
-      })
-      return
-    }
-    
-    // 确认是否完成练习
-    const confirmResult = await Taro.showModal({
-      title: '完成练习',
-      content: `确定要完成练习吗？已录音 ${recordedCount} 条`,
-      confirmText: '确定',
-      cancelText: '取消'
-    })
-    
-    if (!confirmResult.confirm) {
-      return
-    }
-    
-    try {
-      Taro.showLoading({
-        title: '正在处理...',
-        mask: true
-      })
-      
-      const studentInfo = Taro.getStorageSync('studentInfo')
-      const studentId = studentInfo?.id
-      
-      if (!studentId) {
-        throw new Error('未找到学生信息')
-      }
-      
-      console.log('\n========================================')
-      console.log('自由练习完成处理开始')
-      console.log('========================================')
-      console.log('单元ID:', unitId)
-      console.log('学生ID:', studentId)
-      console.log('录音数量:', recordedCount)
-      
-      const { fileAPI, speechAudioAPI, soeAPI, contentAPI, speechReportAPI } = await import('../../utils/api_v2')
-      
-      const audioIds: number[] = []
-      const allEvaluations: string[] = []
-      const allSoeResults: any[] = []
-      
-      // 遍历所有录音
-      for (const [messageId, recordData] of Object.entries(freeRecordedMessages)) {
-        console.log(`\n======== 处理录音 ${messageId} ========`)
-        console.log('识别文本:', recordData.recognizedText)
-        console.log('时长:', recordData.duration)
-        console.log('WAV文件:', recordData.localFilePath)
-        
-        try {
-          // 检查是否有录音文件
-          if (!recordData.localFilePath) {
-            console.warn('⚠️  未找到录音文件，跳过')
-            continue
-          }
-          
-          // 步骤1: 上传WAV文件
-          console.log('\n📤 步骤1: 上传WAV文件')
-          const uploadResult = await fileAPI.uploadFile(recordData.localFilePath)
-          
-          if (!uploadResult.success) {
-            throw new Error('上传文件失败: ' + uploadResult.message)
-          }
-          
-          const fileUrl = uploadResult.data?.file?.url || ''
-          console.log('✅ 文件上传成功:', fileUrl)
-          
-          // 步骤2: SOE语音评测
-          console.log('\n🎯 步骤2: SOE语音评测')
-          const soeResult = await soeAPI.evaluate(recordData.localFilePath, recordData.recognizedText)
-          
-          let soeData = null
-          let evaluation = ''
-          
-          if (soeResult.success && soeResult.data) {
-            soeData = soeResult.data
-            console.log('✅ SOE评测成功')
-            console.log('评测结果:', JSON.stringify(soeData).substring(0, 200) + '...')
-            
-            // 生成简单的评价文本
-            evaluation = `发音评分：${soeData.score || 'N/A'}，准确度：${soeData.accuracy || 'N/A'}`
-            allSoeResults.push(soeData)
-          } else {
-            console.warn('⚠️  SOE评测失败，将使用AI生成评价')
-            // SOE失败时使用AI生成评价
-            const aiEvaluationQuery = `用户说了: "${recordData.recognizedText}"\n时长: ${recordData.duration}秒\n请给出简短的英语口语评价。`
-            const aiEvaluationResult = await contentAPI.generate(5844, aiEvaluationQuery)
-            
-            if (aiEvaluationResult.success) {
-              evaluation = aiEvaluationResult.data?.content || aiEvaluationResult.result?.content || ''
-              console.log('✅ AI评价生成成功')
-            }
-          }
-          
-          // 步骤3: 保存到 speech_audio 表
-          console.log('\n💾 步骤3: 保存音频记录到 speech_audio')
-          const audioData = {
-            unit_id: Number(unitId),
-            student_id: studentId,
-            file: fileUrl,
-            duration: recordData.duration,
-            ref_text: recordData.recognizedText,
-            evaluation: evaluation
-          }
-          
-          const saveResult = await speechAudioAPI.editAudio(audioData)
-          
-          if (!saveResult.success) {
-            throw new Error('保存音频记录失败')
-          }
-          
-          const audioId = saveResult.data?.id || saveResult.result?.id
-          
-          if (!audioId) {
-            throw new Error('音频ID为空')
-          }
-          
-          console.log('✅ 音频记录已保存，ID:', audioId)
-          audioIds.push(audioId)
-          allEvaluations.push(evaluation)
-          
-        } catch (error) {
-          console.error(`❌ 处理录音 ${messageId} 失败:`, error)
-          // 继续处理其他录音
-        }
-      }
-      
-      console.log('\n=== 所有录音处理完成 ===')
-      console.log('成功处理:', audioIds.length, '/', recordedCount)
-      
-      if (audioIds.length === 0) {
-        throw new Error('没有成功处理的录音')
-      }
-      
-      // 4. 创建 speech_report
-      console.log('\n📊 创建自由练习报告')
-      const reportData = {
-        unit_id: Number(unitId),
-        student_id: studentId,
-        audio_ids: audioIds,
-        content: ''  // 稍后由后台任务填充
-      }
-      
-      const reportResult = await speechReportAPI.editReport(reportData)
-      
-      if (!reportResult.success) {
-        throw new Error('创建报告失败')
-      }
-      
-      const reportId = reportResult.data?.id || reportResult.result?.id
-      
-      if (!reportId) {
-        throw new Error('报告ID为空')
-      }
-      
-      console.log('✅ 报告已创建，ID:', reportId)
-      
-      // 5. 后台异步生成整体 AI 分析建议
-      this.generateFreeExerciseOverallContent(reportId, unitId, studentId, audioIds, allEvaluations)
-      
-      Taro.hideLoading()
-      
-      // 成功提示
-      await Taro.showModal({
-        title: '完成',
-        content: '自由练习已完成！AI正在生成分析报告...',
-        showCancel: false
-      })
-      
-      // 跳转到报告页面
-      Taro.navigateTo({
-        url: `/pages/report/index?reportId=${reportId}&unitId=${unitId}&mode=free`
-      })
-      
-    } catch (error: any) {
-      console.error('❌ 完成练习失败:', error)
-      Taro.hideLoading()
-      Taro.showToast({
-        title: error.message || '处理失败',
-        icon: 'none'
-      })
-    }
-  }
-  
-  /**
-   * 后台生成自由练习整体分析建议
-   */
-  generateFreeExerciseOverallContent = async (
-    reportId: number,
-    unitId: string,
-    studentId: number,
-    audioIds: number[],
-    allEvaluations: string[]
-  ) => {
-    try {
-      console.log('🔄 后台任务：生成自由练习整体AI分析')
-      const { contentAPI, speechReportAPI } = await import('../../utils/api_v2')
-      
-      const combinedEvaluations = allEvaluations.join('\n\n')
-      console.log('🔄 拼接内容长度:', combinedEvaluations.length)
-      
-      const overallResult = await contentAPI.generate(5863, combinedEvaluations)
-      
-      if (overallResult.success) {
-        const overallContent = overallResult.data?.content || overallResult.result?.content || ''
-        console.log('✅ 整体分析生成成功，长度:', overallContent.length)
-        
-        // 更新 report
-        const updateResult = await speechReportAPI.editReport({
-          id: reportId,
-          unit_id: Number(unitId),
-          student_id: studentId,
-          audio_ids: audioIds,
-          content: overallContent
-        })
-        
-        if (updateResult.success) {
-          console.log('✅ 整体分析已保存')
-        } else {
-          console.log('⚠️  保存整体分析失败:', updateResult.message)
-        }
-      } else {
-        console.log('⚠️  生成整体分析失败:', overallResult.message)
-      }
-    } catch (error) {
-      console.error('❌ 后台任务失败:', error)
-    }
-  }
-
   componentWillUnmount() {
     // 组件卸载时清除定时器和音频资源
     this.stopVoiceAnimation()
@@ -2665,6 +1712,7 @@ export default class Conversation extends Component {
         console.log('  - student_id =', studentId)
         console.log('  - exercise_id =', exerciseId)
         console.log('  - is_free = false (结构化练习)')
+        
         
         const deleteResult = await studentAPI.deleteStudentExerciseData(
           studentId, 
@@ -2857,53 +1905,7 @@ export default class Conversation extends Component {
               // 保存评测结果供后续使用
               allSoeResults.push(soeData)
               
-              // 3.3 调用 generate 接口生成评价
-              console.log('\n✍️  步骤3.3: 生成评价')
-              Taro.showLoading({
-                title: `生成评价 ${i + 1}/${uploadResults.length}`,
-                mask: true
-              })
-              
-              const soeJsonQuery = JSON.stringify(soeData)
-              const contentResult = await contentAPI.generate(5844, soeJsonQuery)
-              
-              if (!contentResult.success) {
-                throw new Error('生成评价失败')
-              }
-              
-              const evaluation = contentResult.data?.content || contentResult.result?.content || ''
-              console.log('✅ 评价生成成功')
-              console.log('评价长度:', evaluation.length)
-              console.log('评价预览:', evaluation.substring(0, 100) + '...')
-              
-              // 3.4 更新音频记录的 evaluation 字段
-              console.log('\n💾 步骤3.4: 更新音频记录')
-              Taro.showLoading({
-                title: `更新记录 ${i + 1}/${uploadResults.length}`,
-                mask: true
-              })
-              
-              // 去掉 Q:/A: 前缀
-              const updateRefText = uploadResult.messageText.replace(/^[QA]:\s*/, '')
-              const updateAudioData = {
-                id: uploadResult.audioId,
-                student_id: uploadResult.studentId,
-                exercise_id: uploadResult.exerciseId,
-                file: uploadResult.audioUrl,
-                ref_text: updateRefText,  // 参考文本（去掉前缀）
-                is_free: false,  // 结构化练习音频
-                evaluation: evaluation  // 保存生成的评价
-              }
-              
-              const updateResult = await audioAPI.editAudio(updateAudioData)
-              
-              if (updateResult.success) {
-                console.log('✅ 音频记录已更新，evaluation 已保存')
-                // 收集 evaluation 内容用于后续生成总体分析
-                allEvaluations.push(evaluation)
-              } else {
-                console.log('⚠️  更新音频记录失败，但继续处理')
-              }
+              console.log('✅ SOE 评测完成，跳过立即生成评价（将在后台生成）')
               
               console.log(`========================================\n`)
               
@@ -2914,9 +1916,8 @@ export default class Conversation extends Component {
             }
           }
           
-          console.log('\n✅ 所有音频处理完成')
+          console.log('\n✅ 所有音频 SOE 评测完成')
           console.log('成功评测音频数量:', allSoeResults.length)
-          console.log('成功生成 evaluation 数量:', allEvaluations.length)
           
           // ====== 步骤4: 保存评测结果到report ======
           console.log('\n========================================')
@@ -2976,28 +1977,26 @@ export default class Conversation extends Component {
               console.log('  - 音频ID数组:', audioIds)
               console.log('  - 评测结果数量:', allSoeResults.length)
               
-              // ====== 步骤5: 后台异步生成整体AI分析建议（不阻塞用户） ======
+              // ====== 步骤5: 后台异步生成评价和整体AI分析（不阻塞用户） ======
               console.log('\n========================================')
-              console.log('步骤5: 后台异步生成整体AI分析建议')
+              console.log('步骤5: 后台异步生成评价和整体AI分析')
               console.log('========================================')
               
               // 🔥 不等待生成完成，直接在后台异步执行
-              if (reportId && allEvaluations.length > 0) {
-                this.generateOverallContentInBackground(
+              if (reportId && allSoeResults.length > 0) {
+                this.generateEvaluationsAndOverallAnalysisInBackground(
                   reportId,
                   studentId,
                   exerciseId,
-                  reportData,
-                  audioIds,
-                  jsonContent,
-                  allEvaluations
+                  uploadResults,
+                  allSoeResults
                 )
-                console.log('✅ 整体AI分析建议生成任务已提交到后台')
-                console.log('用户可以立即查看报告，AI分析建议将在后台生成完成')
+                console.log('✅ 评价和整体AI分析生成任务已提交到后台')
+                console.log('用户可以立即返回，AI分析将在后台生成完成（约1-2分钟）')
               } else {
-                console.log('⚠️  无法生成整体AI分析建议')
+                console.log('⚠️  无法生成评价和整体AI分析')
                 console.log('   - reportId:', reportId)
-                console.log('   - evaluations数量:', allEvaluations.length)
+                console.log('   - SOE结果数量:', allSoeResults.length)
               }
             } else {
               console.log('⚠️  保存评测结果失败:', reportResult.message)
@@ -3015,17 +2014,16 @@ export default class Conversation extends Component {
       
       Taro.hideLoading()
       
-      // 显示完成提示
+      // 显示完成提示并返回上一页
       Taro.showModal({
         title: '练习完成',
-        content: `恭喜你完成了这个练习！\n成功上传 ${uploadedCount}/${recordedCount} 个录音`,
-        confirmText: '继续',
-        cancelText: '返回',
+        content: `恭喜你完成了这个练习！\n成功上传 ${uploadedCount}/${recordedCount} 个录音\n\n📝 学习建议正在生成中，预计需要1-2分钟`,
+        showCancel: false,
+        confirmText: '返回',
         success: (res) => {
           if (res.confirm) {
-            // 继续下一个练习的逻辑
-            Taro.navigateBack()
-          } else {
+            // 返回上一页
+            console.log('练习完成，返回上一页')
             Taro.navigateBack()
           }
         }
@@ -3039,6 +2037,124 @@ export default class Conversation extends Component {
         icon: 'none',
         duration: 2000
       })
+    }
+  }
+
+  /**
+   * 后台异步生成所有评价和整体AI分析
+   * 不阻塞用户操作，生成完成后自动更新audio和report
+   */
+  generateEvaluationsAndOverallAnalysisInBackground = async (
+    reportId: number,
+    studentId: number,
+    exerciseId: number,
+    uploadResults: any[],
+    allSoeResults: any[]
+  ) => {
+    try {
+      console.log('🔄 后台任务：开始生成所有评价和整体AI分析')
+      console.log('音频数量:', uploadResults.length)
+      console.log('SOE结果数量:', allSoeResults.length)
+      
+      const { contentAPI, audioAPI, reportAPI } = await import('../../utils/api_v2')
+      const allEvaluations: string[] = []
+      
+      // 步骤1: 逐个生成评价并更新音频记录
+      for (let i = 0; i < uploadResults.length; i++) {
+        try {
+          const uploadResult = uploadResults[i]
+          const soeData = allSoeResults[i]
+          
+          if (!soeData) {
+            console.log(`⚠️  后台任务：音频 ${i + 1} 没有SOE结果，跳过`)
+            continue
+          }
+          
+          console.log(`\n🔄 后台任务：生成评价 ${i + 1}/${uploadResults.length}`)
+          console.log('音频ID:', uploadResult.audioId)
+          
+          // 调用 generate 接口生成评价
+          const soeJsonQuery = JSON.stringify(soeData)
+          const contentResult = await contentAPI.generate(5844, soeJsonQuery)
+          
+          if (!contentResult.success) {
+            console.log(`⚠️  后台任务：音频 ${i + 1} 生成评价失败，跳过`)
+            continue
+          }
+          
+          const evaluation = contentResult.data?.content || contentResult.result?.content || ''
+          console.log(`✅ 后台任务：音频 ${i + 1} 评价生成成功，长度: ${evaluation.length}`)
+          
+          // 更新音频记录的 evaluation 字段
+          const updateRefText = uploadResult.messageText.replace(/^[QA]:\s*/, '')
+          const updateAudioData = {
+            id: uploadResult.audioId,
+            student_id: uploadResult.studentId,
+            exercise_id: uploadResult.exerciseId,
+            file: uploadResult.audioUrl,
+            ref_text: updateRefText,
+            is_free: false,
+            evaluation: evaluation
+          }
+          
+          const updateResult = await audioAPI.editAudio(updateAudioData)
+          
+          if (updateResult.success) {
+            console.log(`✅ 后台任务：音频 ${i + 1} 记录已更新`)
+            allEvaluations.push(evaluation)
+          } else {
+            console.log(`⚠️  后台任务：音频 ${i + 1} 记录更新失败`)
+          }
+          
+        } catch (error) {
+          console.error(`❌ 后台任务：处理音频 ${i + 1} 失败:`, error)
+        }
+      }
+      
+      console.log('\n✅ 后台任务：所有评价生成完成')
+      console.log('成功生成评价数量:', allEvaluations.length)
+      
+      // 步骤2: 生成整体AI分析
+      if (allEvaluations.length > 0) {
+        console.log('\n🔄 后台任务：开始生成整体AI分析')
+        
+        const combinedEvaluations = allEvaluations.join('\n\n')
+        console.log('拼接后的内容长度:', combinedEvaluations.length)
+        
+        const overallContentResult = await contentAPI.generate(5863, combinedEvaluations)
+        
+        if (overallContentResult.success) {
+          const overallContent = overallContentResult.data?.content || overallContentResult.result?.content || ''
+          console.log('✅ 后台任务：整体AI分析生成成功，长度:', overallContent.length)
+          
+          // 更新 report 的 content 字段（只更新content，其他字段保持不变）
+          const audioIds = uploadResults.map(r => r.audioId).filter(id => id)
+          const updateReportResult = await reportAPI.editReport({
+            id: reportId,
+            student_id: studentId,
+            exercise_id: exerciseId,
+            name: `练习评测报告`,
+            audio_ids: audioIds,
+            summary: `自动生成的评测报告`,
+            content: overallContent
+          })
+          
+          if (updateReportResult.success) {
+            console.log('✅ 后台任务：整体AI分析已保存到 report')
+          } else {
+            console.log('⚠️  后台任务：保存整体AI分析失败')
+          }
+        } else {
+          console.log('⚠️  后台任务：生成整体AI分析失败')
+        }
+      } else {
+        console.log('⚠️  后台任务：没有评价内容，跳过整体AI分析')
+      }
+      
+      console.log('✅ 后台任务：所有生成任务完成')
+      
+    } catch (error) {
+      console.error('❌ 后台任务：生成评价和整体AI分析失败:', error)
     }
   }
 
@@ -3117,156 +2233,9 @@ export default class Conversation extends Component {
       recordedMessages,
       isFirstTime,
       selectedRole,
-      playingDigitalVoiceId,
-      mode,
-      userInputText,
-      isSendingMessage,
-      isLongPressing,
-      freeRecordedMessages
+      playingDigitalVoiceId
     } = this.state
-    
-    // 自由对话模式
-    if (mode === 'free') {
-      return (
-        <View className='conversation-page free-mode'>
-          <View className='header'>
-            <View className='header-content'>
-              <View className='header-left'>
-                <AtIcon value='message' size='32' color='white' />
-                <Text className='header-title'>自由对话</Text>
-              </View>
-              <View className='header-right'>
-                <SafeAtButton
-                  type='secondary'
-                  size='small'
-                  onClick={this.handleCompleteFreeExercise}
-                  className='complete-btn'
-                  disabled={isAIResponding || isSendingMessage || isLongPressing}
-                >
-                  完成练习
-                </SafeAtButton>
-                <Text className='user-name'>{this.state.studentName}</Text>
-              </View>
-            </View>
-          </View>
 
-          {/* 对话区域 */}
-          <ScrollView 
-            className='conversation-area free-conversation-area'
-            scrollY 
-            scrollIntoView={this.state.scrollIntoViewId}
-            scrollWithAnimation
-          >
-            <View className='messages-container'>
-              {messages.filter(msg => !msg.hidden).map((message) => (
-                <View 
-                  key={message.id}
-                  id={`message-${message.id}`}
-                  className={`message-wrapper ${message.isUser ? 'user-message-wrapper' : 'ai-message-wrapper'}`}
-                >
-                  <View className={`message ${message.isUser ? 'user-message' : 'ai-message'}`}>
-                    {!message.isUser && (
-                      <Image 
-                        className='avatar' 
-                        src={avatarImages[0]} 
-                        mode='aspectFill'
-                      />
-                    )}
-                    
-                    <View className='message-content'>
-                      {/* 用户消息：显示录音气泡和文本 */}
-                      {message.isUser ? (
-                        <>
-                          {/* 录音气泡 */}
-                          {freeRecordedMessages[message.id] && (
-                            <View 
-                              className={`voice-bubble ${(this.state.playingDigitalVoiceId !== null || (this.state.playingVoiceId !== null && this.state.playingVoiceId !== message.id)) ? 'disabled' : ''}`}
-                              onClick={() => {
-                                // 如果有其他音频正在播放，不允许点击
-                                if (this.state.playingDigitalVoiceId !== null || (this.state.playingVoiceId !== null && this.state.playingVoiceId !== message.id)) {
-                                  Taro.showToast({
-                                    title: '请等待当前音频播放完成',
-                                    icon: 'none'
-                                  })
-                                  return
-                                }
-                                this.handlePlayFreeVoice(message.id)
-                              }}
-                            >
-                              <Text className='voice-duration'>{Math.round(freeRecordedMessages[message.id].duration || 0)}"</Text>
-                              <View className='voice-icon-wrapper'>
-                                {this.renderVoiceIcon(message.id)}
-                              </View>
-                            </View>
-                          )}
-                          
-                          {/* 文本消息 */}
-                          <View className='message-bubble'>
-                            <Text className='message-text'>{message.text}</Text>
-                          </View>
-                        </>
-                      ) : (
-                        /* AI消息：显示消息气泡 */
-                        <View className='message-bubble'>
-                          <Text className='message-text'>{message.text}</Text>
-                          {message.isStreaming && (
-                            <View className='streaming-indicator'>
-                              <Text className='streaming-dot'>●</Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-
-          {/* 录音区域 */}
-          <View className='record-area'>
-            {/* 实时识别文本显示 */}
-            {userInputText && (
-              <View className='recognition-text-display'>
-                <Text className='recognition-text'>{userInputText}</Text>
-              </View>
-            )}
-            
-            {/* 长按录音按钮 */}
-            <View className='record-button-container'>
-              <View
-                className={`record-button ${isLongPressing ? 'recording' : ''}`}
-                onTouchStart={this.handleLongPressStart}
-                onTouchEnd={this.handleLongPressEnd}
-                onTouchCancel={this.handleLongPressEnd}
-              >
-                <AtIcon 
-                  value={isLongPressing ? 'pause' : 'play'} 
-                  size='48' 
-                  color={isLongPressing ? '#ff4d4f' : '#667eea'} 
-                />
-              </View>
-              <Text className='record-hint'>
-                {isLongPressing ? '松开发送' : '长按说话'}
-              </Text>
-            </View>
-          </View>
-
-          {/* 加载遮罩层 */}
-          {this.state.isLoadingConversation && (
-            <View className='loading-overlay'>
-              <View className='loading-content'>
-                <Text className='loading-tip'>正在初始化对话...</Text>
-                <Text className='loading-subtitle'>请稍候，正在为您准备对话上下文</Text>
-                <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
-              </View>
-            </View>
-          )}
-        </View>
-      )
-    }
-
-    // 结构化练习模式
     if (!currentExercise) {
       return (
         <View className='loading-page'>
