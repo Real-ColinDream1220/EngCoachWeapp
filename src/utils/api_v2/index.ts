@@ -14,4 +14,8 @@ export * from './file'
 export * from './soe'
 export * from './voicePack'
 export * from './content'
+export * from './aiChat'
+export * from './speechAudio'
+export * from './speechReport'
+export * from './nls'
 

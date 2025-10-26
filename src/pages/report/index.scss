@@ -29,7 +29,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: linear-gradient(135deg, #667eea 0%, #667eea 100%);
+  background: #667eea;
   padding: 20px 0;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 
@@ -68,38 +68,40 @@
 // 主内容区域
 .content-area {
   flex: 1;
-  padding: 108px 30px 100px;
+  padding-top: 108px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 100px;
   overflow-y: scroll;
+  box-sizing: border-box;
 }
 
-// 区块
+// 区块（与 teacher 页面一致）
 .section {
-  width: 100% !important;
-  margin-bottom: 30px !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 30px;
+  box-sizing: border-box;
 
   &:last-child {
-    margin-bottom: 0 !important;
+    margin-bottom: 0;
   }
 }
 
-// 卡片样式
+// 卡片样式（与 teacher 页面一致）
 .info-card,
 .audio-card,
 .summary-card {
-  background: white !important;
-  border-radius: 20px !important;
-  padding: 30px !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
+  background: white;
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 690px; // 与 teacher 页面一致
+  box-sizing: border-box;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
 
   .card-header {
     display: flex;
@@ -157,25 +159,35 @@
 .audio-list {
   display: flex;
   flex-direction: column;
-  gap: 30px;
 
   .audio-item {
     display: flex;
     flex-direction: column;
-    gap: 15px;
     padding: 20px;
     background: #f8f9fa;
     border-radius: 15px;
     transition: all 0.3s ease;
+    margin-bottom: 15px;
 
-    &:active {
-      background: #f0f2f5;
+    &:last-child {
+      margin-bottom: 0;
     }
 
-    .audio-header {
+    &.collapsed {
+      padding: 15px 20px;
+    }
+
+    // 音频头部行（始终可见）
+    .audio-header-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      
+      &:active {
+        opacity: 0.7;
+      }
 
       .audio-badge {
         width: 40px;
@@ -185,6 +197,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-shrink: 0;
 
         .badge-text {
           font-size: 24px;
@@ -192,15 +205,36 @@
           font-weight: bold;
         }
       }
+
+      // 音频时长标签
+      .audio-duration-label {
+        flex-shrink: 0;
+        
+        .duration-text {
+          font-size: 22px;
+          color: #667eea;
+          font-weight: 500;
+          background: rgba(102, 126, 234, 0.1);
+          padding: 4px 12px;
+          border-radius: 12px;
+          display: inline-block;
+          white-space: nowrap;
+        }
+      }
+      
+      .toggle-icon {
+        margin-left: auto;
+        flex-shrink: 0;
+        transition: transform 0.3s ease;
+      }
     }
 
-    // 音频气泡（左对齐，与 conversation 页面一致但左右翻转）
+    // 音频气泡（左对齐）
     .voice-bubble {
-      background: #e6f7ff;  // 浅蓝色背景，与 conversation 一致
+      background: #e6f7ff;
       color: #333;
-      border-radius: 5px 20px 20px 20px;  // 左下角尖角（左对齐）
+      border-radius: 5px 20px 20px 20px;
       padding: 15px 20px;
-      margin-bottom: 10px;
       display: flex;
       flex-direction: row;
       align-items: center;
@@ -208,7 +242,7 @@
       gap: 12px;
       min-width: 120px;
       max-width: 200px;
-      align-self: flex-start;
+      flex: 1;
       cursor: pointer;
       transition: all 0.2s ease;
 
@@ -218,14 +252,14 @@
       }
 
       &.playing {
-        background: #d4edff;  // 播放时稍微深一点
+        background: #d4edff;
       }
 
       .voice-icon-wrapper {
         display: flex;
         align-items: center;
         justify-content: center;
-        transform: rotate(180deg);  // 旋转图标
+        transform: rotate(180deg);
         flex-shrink: 0;
       }
 
@@ -240,6 +274,41 @@
         opacity: 1 !important;
         flex-shrink: 0 !important;
         min-width: 40px !important;
+      }
+    }
+
+    // 可折叠内容区域
+    .audio-collapsible-content {
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin-top 0.3s ease;
+      opacity: 1;
+      margin-top: 20px;
+      
+      &.collapsed {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+      }
+      
+      &.expanded {
+        max-height: none; // 展开时不限制高度，完全显示内容
+        margin-top: 20px;
+      }
+    }
+
+    // 参考文本区域
+    .reference-text-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      margin-top: 5px;
+      
+      .reference-label {
+        font-size: 24px;
+        color: #667eea;
+        font-weight: 600;
+        padding-left: 5px;
       }
     }
 
@@ -261,6 +330,107 @@
         word-wrap: break-word;
         overflow-wrap: break-word;
         white-space: pre-wrap;
+      }
+      
+      // 空状态样式
+      &.message-bubble-empty {
+        background: #f5f5f5;
+        opacity: 0.7;
+      }
+      
+      .message-text-empty {
+        font-size: 24px;
+        color: #999;
+        font-style: italic;
+      }
+    }
+
+    // AI评价分析区域（可折叠）
+    .evaluation-section {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      margin-top: 10px;
+      
+      // AI分析标题（可点击）
+      .evaluation-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        padding: 10px 5px;
+        transition: all 0.2s ease;
+        
+        &:active {
+          opacity: 0.7;
+        }
+        
+        .evaluation-label {
+          font-size: 24px;
+          color: #52c41a;
+          font-weight: 600;
+        }
+        
+        .evaluation-toggle-icon {
+          transition: transform 0.3s ease;
+        }
+      }
+      
+      // AI分析内容（可折叠）
+      .evaluation-content {
+        overflow: hidden;
+        transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin-top 0.3s ease;
+        opacity: 1;
+        margin-top: 10px;
+        
+        &.collapsed {
+          max-height: 0;
+          opacity: 0;
+          margin-top: 0;
+        }
+        
+        &.expanded {
+          max-height: none; // 展开时不限制高度，完全显示内容
+          margin-top: 10px;
+        }
+      }
+    }
+
+    // AI评价框（自适应大小）
+    .evaluation-box {
+      background: #f6ffed;
+      border: 1px solid #b7eb8f;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 100%;
+      width: fit-content; // 改为自适应宽度
+      min-width: 200px; // 设置最小宽度，避免太窄
+      align-self: flex-start;
+      box-shadow: 0 2px 8px rgba(82, 196, 26, 0.1);
+      box-sizing: border-box;
+
+      .evaluation-text {
+        font-size: 24px;
+        line-height: 1.8;
+        color: #333;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: pre-wrap;
+      }
+      
+      // 空状态样式（保持全宽）
+      &.evaluation-box-empty {
+        background: #fafafa;
+        border: 1px dashed #d9d9d9;
+        opacity: 0.7;
+        width: 100%; // 空状态保持全宽
+      }
+      
+      .evaluation-text-empty {
+        font-size: 22px;
+        color: #999;
+        font-style: italic;
+        text-align: center;
       }
     }
   }
@@ -288,7 +458,7 @@
   }
 }
 
-// 学习建议
+// 学习建议（静态展示）
 .summary-content {
   min-height: 100px;
 

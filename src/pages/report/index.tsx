@@ -20,7 +20,9 @@ export default class Report extends Component {
     playingAudioId: null as number | null,
     audioIconIndex: 0,
     studentName: '学生',
-    isLoading: true
+    isLoading: true,
+    expandedAudioIds: {} as Record<number, boolean>, // 每个音频项的展开状态
+    expandedEvaluationIds: {} as Record<number, boolean> // 每个音频的AI分析展开状态
   }
 
   audioContext: any = null
@@ -242,6 +244,8 @@ export default class Report extends Component {
           console.log('duration值:', audio.duration)
           console.log('file:', audio.file)
           console.log('message_text:', audio.message_text)
+          console.log('ref_text:', audio.ref_text)
+          console.log('evaluation:', audio.evaluation)
           
           const parsedDuration = Number(audio.duration) || 0
           console.log('解析后的duration:', parsedDuration)
@@ -251,7 +255,9 @@ export default class Report extends Component {
             id: audio.id,
             file: audio.file,  // 音频文件URL
             duration: parsedDuration,
-            messageText: audio.message_text || '',  // 对应的消息文本
+            messageText: audio.message_text || '',  // 完整消息文本（带前缀）
+            refText: audio.ref_text || '',  // 参考文本（去掉前缀，用于显示）
+            evaluation: audio.evaluation || '',  // AI评价分析
             createdAt: audio.created_at || audio.createdAt
           }
         })
@@ -404,8 +410,29 @@ export default class Report extends Component {
     Taro.navigateBack()
   }
 
+  // 切换音频项展开/折叠
+  toggleAudioItem = (audioId: number) => {
+    this.setState((prevState: any) => ({
+      expandedAudioIds: {
+        ...prevState.expandedAudioIds,
+        [audioId]: !prevState.expandedAudioIds[audioId]
+      }
+    }))
+  }
+
+  // 切换AI分析展开/折叠
+  toggleEvaluation = (audioId: number, e: any) => {
+    e.stopPropagation() // 阻止事件冒泡，避免触发音频项的折叠
+    this.setState((prevState: any) => ({
+      expandedEvaluationIds: {
+        ...prevState.expandedEvaluationIds,
+        [audioId]: !prevState.expandedEvaluationIds[audioId]
+      }
+    }))
+  }
+
   render() {
-    const { exerciseTitle, exerciseDescription, audioList, studentName, isLoading, reportContent } = this.state
+    const { exerciseTitle, exerciseDescription, audioList, studentName, isLoading, reportContent, expandedAudioIds, expandedEvaluationIds } = this.state
 
     return (
       <View className='report-page'>
@@ -474,39 +501,85 @@ export default class Report extends Component {
                 <View className='audio-list'>
                   {audioList.map((audio, index) => {
                     const displayDuration = Math.floor(Number(audio.duration) || 0)
-                    console.log(`渲染音频 ${index + 1}:`, {
-                      id: audio.id,
-                      duration: audio.duration,
-                      durationDisplay: displayDuration,
-                      durationString: `${displayDuration}"`
-                    })
+                    const isAudioExpanded = expandedAudioIds[audio.id] !== false // 默认展开
+                    const isEvaluationExpanded = expandedEvaluationIds[audio.id] !== false // 默认展开
                     
                     return (
-                    <View key={audio.id} className='audio-item'>
-                      {/* 音频序号 */}
-                      <View className='audio-header'>
+                    <View key={audio.id} className={`audio-item ${isAudioExpanded ? 'expanded' : 'collapsed'}`}>
+                      {/* 音频序号和气泡 - 始终可见 */}
+                      <View className='audio-header-row' onClick={() => this.toggleAudioItem(audio.id)}>
                         <View className='audio-badge'>
                           <Text className='badge-text'>{index + 1}</Text>
                         </View>
+                        
+                        {/* 音频时长标签 */}
+                        {/* <View className='audio-duration-label'>
+                          <Text className='duration-text'>⏱️ {displayDuration}秒</Text>
+                        </View> */}
+                        
+                        {/* 音频气泡 */}
+                        <View
+                          className={`voice-bubble ${this.state.playingAudioId === audio.id ? 'playing' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            this.handlePlayAudio(audio.id, audio.file)
+                          }}
+                        >
+                          <Text className='voice-duration'>{displayDuration}"</Text>
+                          <View className='voice-icon-wrapper'>
+                            {this.renderAudioIcon(audio.id)}
+                          </View>
+                        </View>
+                        
+                        {/* 折叠图标 */}
+                        <AtIcon 
+                          value={isAudioExpanded ? 'chevron-up' : 'chevron-down'} 
+                          size='24' 
+                          color='#667eea'
+                          className='toggle-icon'
+                        />
                       </View>
 
-                      {/* 音频气泡 */}
-                      <View
-                        className={`voice-bubble ${this.state.playingAudioId === audio.id ? 'playing' : ''}`}
-                        onClick={() => this.handlePlayAudio(audio.id, audio.file)}
-                      >
-                        <Text className='voice-duration'>{displayDuration}"</Text>
-                        <View className='voice-icon-wrapper'>
-                          {this.renderAudioIcon(audio.id)}
+                      {/* 可折叠内容区域 */}
+                      <View className={`audio-collapsible-content ${isAudioExpanded ? 'expanded' : 'collapsed'}`}>
+                        {/* 参考文本 */}
+                        <View className='reference-text-section'>
+                          <Text className='reference-label'>📝 参考文本</Text>
+                          {audio.refText ? (
+                            <View className='message-bubble'>
+                              <Text className='message-text'>{audio.refText}</Text>
+                            </View>
+                          ) : (
+                            <View className='message-bubble message-bubble-empty'>
+                              <Text className='message-text-empty'>暂无参考文本</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {/* AI分析总结 */}
+                        <View className='evaluation-section'>
+                          <View className='evaluation-header' onClick={(e) => this.toggleEvaluation(audio.id, e)}>
+                            <Text className='evaluation-label'>🤖 AI分析总结</Text>
+                            <AtIcon 
+                              value={isEvaluationExpanded ? 'chevron-up' : 'chevron-down'} 
+                              size='20' 
+                              color='#52c41a'
+                              className='evaluation-toggle-icon'
+                            />
+                          </View>
+                          <View className={`evaluation-content ${isEvaluationExpanded ? 'expanded' : 'collapsed'}`}>
+                            {audio.evaluation ? (
+                              <View className='evaluation-box'>
+                                <Text className='evaluation-text'>{audio.evaluation}</Text>
+                              </View>
+                            ) : (
+                              <View className='evaluation-box evaluation-box-empty'>
+                                <Text className='evaluation-text-empty'>AI分析生成中...</Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
                       </View>
-
-                      {/* 消息文本 */}
-                      {audio.messageText && (
-                        <View className='message-bubble'>
-                          <Text className='message-text'>{audio.messageText}</Text>
-                        </View>
-                      )}
                     </View>
                     )
                   })}

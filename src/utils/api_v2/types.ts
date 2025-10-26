@@ -53,8 +53,11 @@ export interface Audio {
   student_id: number
   exercise_id: number
   file: string  // 数据库字段名为 file，存储音频文件URL
-  duration?: number
+  duration?: number  // 音频时长（秒）
   message_text?: string  // 对应的消息文本
+  ref_text?: string  // 参考文本（用于SOE评测）
+  is_free?: boolean  // 是否为自由对话音频（true: 自由对话, false: 结构化练习）
+  evaluation?: string  // 文字评价
   score?: number
   feedback?: string
   created_at?: string
@@ -64,6 +67,7 @@ export interface Audio {
 // 报告类型
 export interface Report {
   id?: number
+  student_id: number  // 学生ID（必填）
   exercise_id: number
   name: string
   audio_ids: number[]  // 音频ID数组
@@ -227,5 +231,31 @@ export interface VoicePackResponse {
   result?: VoicePackItem[]
   status?: string
   success: boolean
+}
+
+// ===== 自由练习相关类型 =====
+
+// 自由练习音频类型
+export interface SpeechAudio {
+  id?: number
+  unit_id: number
+  student_id: number
+  file: string           // 音频文件URL
+  duration?: number      // 音频时长（秒）
+  evaluation?: string    // AI评价文本
+  ref_text?: string      // 语音识别出来的文本
+  created_at?: string
+  updated_at?: string
+}
+
+// 自由练习报告类型
+export interface SpeechReport {
+  id?: number
+  unit_id: number
+  student_id: number
+  audio_ids: number[]    // 音频ID数组
+  content?: string       // 整体AI分析建议
+  created_at?: string
+  updated_at?: string
 }
 

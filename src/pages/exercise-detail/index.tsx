@@ -13,7 +13,7 @@ import Taro from '@tarojs/taro'
 import './index.scss'
 
 // 导入API服务
-import { unitAPI, exerciseAPI, reportAPI } from '../../utils/api_v2'
+import { unitAPI, exerciseAPI, reportAPI, audioAPI } from '../../utils/api_v2'
 
 // 模拟练习数据
 const mockExercises = {
@@ -467,6 +467,43 @@ export default class ExerciseDetail extends Component {
     if (!currentExercise) return
     
     try {
+      // 如果是重新练习（已完成状态），先删除旧的音频记录
+      if (currentExercise.isCompleted) {
+        console.log('=== 重新练习：删除旧音频记录 ===')
+        
+        // 获取学生信息
+        const studentInfo = Taro.getStorageSync('studentInfo')
+        const studentId = studentInfo?.id
+        
+        if (studentId && currentExercise.id) {
+          Taro.showLoading({ title: '清理旧数据...' })
+          
+          try {
+            console.log('学生ID:', studentId)
+            console.log('练习ID:', currentExercise.id)
+            console.log('is_free: false (结构化练习)')
+            
+            // 使用新接口删除该学生在该练习下的所有音频
+            const deleteResult = await audioAPI.deleteAudioByStudentExercise(
+              studentId,
+              currentExercise.id,
+              false  // is_free: false = 结构化练习，true = 自由对话
+            )
+            
+            if (deleteResult.success) {
+              console.log('✅ 旧音频记录删除成功')
+            } else {
+              console.log('⚠️  删除旧音频失败，但继续执行:', deleteResult.message)
+            }
+          } catch (deleteError) {
+            console.error('删除旧音频失败:', deleteError)
+            console.log('⚠️  忽略删除错误，继续执行')
+          }
+        }
+        
+        console.log('=================================\n')
+      }
+      
       Taro.showLoading({ title: '加载练习中...' })
       
       // 调用练习详情接口获取完整数据
@@ -536,6 +573,26 @@ export default class ExerciseDetail extends Component {
     Taro.navigateBack()
   }
 
+  // 处理自由练习按钮点击
+  handleFreePractice = () => {
+    const { unitId } = this.state
+    
+    console.log('点击自由练习', { unitId })
+    
+    if (!unitId) {
+      Taro.showToast({
+        title: '缺少单元信息',
+        icon: 'none'
+      })
+      return
+    }
+    
+    // 跳转到对话页面，传递自由对话标识
+    Taro.navigateTo({
+      url: `/pages/conversation/index?unitId=${unitId}&mode=free`
+    })
+  }
+
   render() {
     const { unitId, exerciseId, currentExercise, unitData, exercises, loading } = this.state
     
@@ -577,6 +634,12 @@ export default class ExerciseDetail extends Component {
               <Text className='header-title'>练习详情</Text>
             </View>
             <View className='header-right'>
+              {/* <View 
+                className='free-practice-btn'
+                onClick={this.handleFreePractice}
+              >
+                <Text className='free-practice-text'>自由练习</Text>
+              </View> */}
               <Text className='user-name'>{this.state.studentName}</Text>
             </View>
           </View>

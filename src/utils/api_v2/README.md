@@ -15,10 +15,15 @@ api_v2/
 ├── exercise.ts        # 练习接口 ✨
 ├── student.ts         # 学生接口 ✨
 ├── audio.ts           # 音频接口 ✨
-└── report.ts          # 报告接口 ✨
+├── report.ts          # 报告接口 ✨
+├── soe.ts             # 语音评测接口 ✨
+├── voicePack.ts       # 数字人语音接口 ✨
+├── content.ts         # AI内容生成接口 ✨
+├── file.ts            # 文件上传接口 ✨
+└── aiChat.ts          # AI聊天接口 ✨✨
 ```
 
-## 🎯 接口总览（25个）
+## 🎯 接口总览（28个）
 
 ### 1. 章节管理 (Chapter) - 4个接口
 
@@ -107,7 +112,7 @@ const response = await exerciseAPI.deleteExercise(id)
 // DELETE /api/oral_eng/exercise/del
 ```
 
-### 4. 学生管理 (Student) - 5个接口
+### 4. 学生管理 (Student) - 6个接口
 
 ```typescript
 import { studentAPI } from '@/utils/api_v2'
@@ -137,6 +142,11 @@ const response = await studentAPI.editStudent({
 // 4.5 删除学生
 const response = await studentAPI.deleteStudent(id)
 // DELETE /api/oral_eng/student/del
+
+// 4.6 删除学生练习数据 ⭐（用于重新练习时清除旧数据）
+const response = await studentAPI.deleteStudentExerciseData(student_id, exercise_id)
+// DELETE /api/oral_eng/del_student_exercise_data
+// 删除指定学生在指定练习中的所有音频和报告数据（is_free=false）
 ```
 
 ### 5. 音频管理 (Audio) - 4个接口
@@ -160,8 +170,11 @@ const response = await audioAPI.editAudio({
   id?: number,
   student_id: number,
   exercise_id: number,
-  audio_url: string,
-  duration?: number,
+  file: string,              // 音频文件URL
+  duration?: number,         // 音频时长（秒）
+  message_text?: string,     // 对应的消息文本
+  is_free?: boolean,         // 是否为自由对话（true: 自由对话, false: 结构化练习）
+  evaluation?: string,       // 文字评价
   score?: number,
   feedback?: string
 })
@@ -207,10 +220,10 @@ const response = await reportAPI.deleteReport(id)
 | 章节 (Chapter) | 2 | 1 | 1 | 4 |
 | 单元 (Unit) | 2 | 1 | 1 | 4 |
 | 练习 (Exercise) | 2 | 1 | 1 | 4 |
-| 学生 (Student) | 3 | 1 | 1 | 5 |
+| 学生 (Student) | 3 | 1 | 2 | 6 |
 | 音频 (Audio) | 2 | 1 | 1 | 4 |
 | 报告 (Report) | 2 | 1 | 1 | 4 |
-| **总计** | **13** | **6** | **6** | **25** |
+| **总计** | **13** | **6** | **7** | **26** |
 
 ## 🔑 认证说明
 
@@ -287,16 +300,22 @@ import { audioAPI, reportAPI } from '@/utils/api_v2'
 const audio1 = await audioAPI.editAudio({
   student_id: 1,
   exercise_id: 10,
-  audio_url: 'https://example.com/audio1.mp3',
+  file: 'https://example.com/audio1.mp3',
   duration: 30,
+  message_text: 'Hello, how are you?',
+  is_free: false,  // 结构化练习
+  evaluation: '发音标准',
   score: 85
 })
 
 const audio2 = await audioAPI.editAudio({
   student_id: 2,
   exercise_id: 10,
-  audio_url: 'https://example.com/audio2.mp3',
+  file: 'https://example.com/audio2.mp3',
   duration: 28,
+  message_text: 'I am fine, thank you!',
+  is_free: false,  // 结构化练习
+  evaluation: '流利度好',
   score: 90
 })
 
@@ -344,10 +363,54 @@ const chapters = await chapterAPI.getChapterList(2931)
 console.log(chapters.data?.chapters)
 ```
 
+### 14. AI 聊天接口 (AI Chat) - 2个接口 ✨✨
+
+```typescript
+import { aiChatAPI } from '@/utils/api_v2'
+
+// 14.1 获取对话主题 ID
+const response = await aiChatAPI.topicEdit()
+// POST /api/ai/chat/topic_edit
+// 返回: { id: number }
+
+// 14.2 AI 对话完成（SSE流式输出）
+await aiChatAPI.completions({
+  tid: number,                       // 对话主题ID
+  text: string,                      // 用户消息文本
+  onMessage: (chunk: string) => void, // 接收到消息块的回调
+  onComplete: () => void,             // 完成回调
+  onError?: (error: any) => void      // 错误回调（可选）
+})
+// POST /api/ai/chat/completions
+// 参数: { tid, text, files: [], agent_id: 5864, ai_config: { agent_id: 5864 } }
+// 响应: SSE 流式数据
+
+// 使用示例
+const topicResponse = await aiChatAPI.topicEdit()
+const tid = topicResponse.data?.id || topicResponse.result?.id
+
+let fullResponse = ''
+await aiChatAPI.completions({
+  tid,
+  text: '你好',
+  onMessage: (chunk) => {
+    fullResponse += chunk
+    console.log('接收到:', chunk)
+  },
+  onComplete: () => {
+    console.log('完成！完整回复:', fullResponse)
+  },
+  onError: (error) => {
+    console.error('错误:', error)
+  }
+})
+```
+
 ## ✅ 已完成
 
-- ✅ 25个接口全部实现
+- ✅ 28个接口全部实现
 - ✅ 完整的 TypeScript 类型定义
+- ✅ 自由对话功能（SSE流式输出）
 - ✅ 统一的请求/响应处理
 - ✅ 自动 Token 认证
 - ✅ 错误处理和日志

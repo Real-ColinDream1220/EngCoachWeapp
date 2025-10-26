@@ -49,6 +49,20 @@ export const audioAPI = {
       method: 'DELETE',
       params: { exercise_id }
     })
+  },
+
+  // 根据 student_id 和 exercise_id 删除某学生在某练习下的所有音频
+  // @param is_free - 是否为自由对话: true = 自由对话，false = 结构化练习
+  deleteAudioByStudentExercise: (student_id: number, exercise_id: number, is_free: boolean) => {
+    return request<DeleteResponse>({
+      url: '/api/oral_eng/audio/del_by_student_exercise',
+      method: 'DELETE',
+      params: { 
+        student_id,
+        exercise_id,
+        is_free  // true: 自由对话音频, false: 结构化练习音频
+      }
+    })
   }
 }
 
