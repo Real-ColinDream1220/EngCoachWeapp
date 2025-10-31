@@ -111,19 +111,20 @@
 
 .exercise-info-section {
   position: fixed;
-  top: 132px; // header 高度 + toggle-btn 高度
+  top: 92px; // header 高度 (72px) + 20px
   left: 0;
   right: 0;
   z-index: 99;
   padding: 0 30px;
-  background: #f5f7fa;
+  background: #f5f7fa; // 与对话框背景颜色一致
   max-height: 0;
   overflow: hidden;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   
   &.expanded {
-    max-height: 300px;
-    padding: 30px;
+    max-height: 400px;
+    padding: 20px 30px;
   }
   
   &.collapsed {
@@ -132,6 +133,7 @@
   }
   
   .exercise-info-card {
+    background: white !important; // card本身是白色，但section背景是#f5f7fa
     border-radius: 20px !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
     
@@ -172,34 +174,27 @@
   }
 }
 
-.conversation-area {
+// 消息容器包装器 - 根据card展开状态动态调整
+.messages-wrapper {
   position: fixed;
-  top: 132px; // 默认从 toggle-btn 下方开始 (折叠状态)
-  bottom: 100px; // 完成按钮区域的高度
+  top: 132px; // header (72px) + toggle-btn (40px) = 112px, 加上20px间距
+  bottom: 120px; // 录音按钮区域高度
   left: 0;
   right: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  z-index: 1; // 低于card的z-index: 99
+  background: #f5f7fa; // 与页面背景色相同
   transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1; // 默认层级
   
-  // 当练习信息展开时，调整顶部位置
-  &.with-expanded-info {
-    top: 432px; // header + toggle-btn + exercise-info 的总高度
-  }
-  
-  // 当录音激活时，提升层级以显示高亮消息
-  &.recording-active {
-    z-index: 9997; // 低于遮罩层，但允许内部元素超越
-  }
-  
-  // 首次进入时，底部不需要留空间
-  &.first-time {
-    bottom: 0;
+  // 当练习信息展开时，调整顶部位置（card高度约300-400px）
+  &.with-expanded-card {
+    top: 532px; // 132px + 400px (card展开高度)
   }
   
   .messages-container {
+    height: 100%;
     padding: 0 30px 20px 30px;
+    overflow-y: auto;
+    background: transparent; // 确保容器透明，使用wrapper的背景色
     
     // 生成练习按钮容器
     .generate-exercise-container {
@@ -312,6 +307,70 @@
       }
     }
     
+    // 初始录音按钮容器
+    .initial-record-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 60vh;
+      gap: 40px;
+      
+      .welcome-text {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+        
+        .welcome-title {
+          font-size: 36px;
+          font-weight: bold;
+          color: #333;
+          text-align: center;
+        }
+        
+        .welcome-hint {
+          font-size: 26px;
+          color: #999;
+          text-align: center;
+        }
+      }
+      
+      .initial-record-button {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+        
+        &:active {
+          transform: scale(0.95);
+        }
+        
+        &.recording-active {
+          background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+          box-shadow: 0 10px 40px rgba(255, 77, 79, 0.4);
+          animation: pulse 1.5s infinite;
+          
+          .icon-bounce {
+            animation: bounce 0.8s infinite;
+          }
+        }
+      }
+      
+      .record-button-hint {
+        font-size: 28px;
+        font-weight: 500;
+        color: #666;
+        text-align: center;
+      }
+    }
+    
     .message-wrapper {
       margin-bottom: 30px;
       
@@ -319,12 +378,44 @@
         display: flex;
         flex-direction: column;
         align-items: flex-end;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding-right: 0; // 确保不会超出边界
+        padding-left: 0; // 确保不会超出左侧边界
+        overflow: hidden; // 防止内容溢出
+        
+        .message {
+          max-width: 100%;
+          box-sizing: border-box;
+          width: 100%; // 确保消息容器占满宽度
+          display: flex;
+          justify-content: flex-end;
+          padding-right: 0; // 确保不会超出右侧边界
+          
+          .message-content {
+            max-width: calc(70% - 10px); // 限制内容区域最大宽度，留出安全边距
+            box-sizing: border-box;
+            width: fit-content; // 内容自适应宽度
+            margin-right: 0; // 确保紧贴右侧但不超过
+            flex-shrink: 1; // 允许收缩
+            
+            .voice-bubble {
+              max-width: 100%; // 确保气泡不超出message-content
+              width: auto; // 自动宽度，但不超过max-width
+              box-sizing: border-box;
+              overflow: hidden; // 防止内容溢出
+            }
+          }
+        }
       }
       
       &.ai-message-wrapper {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
+        width: 100%;
+        box-sizing: border-box;
       }
       
       // 录音高亮状态 - 显示在遮罩层之上
@@ -357,12 +448,20 @@
     
     .message {
       display: flex;
+      width: 100%;
+      box-sizing: border-box;
+      max-width: 100%;
       
       &.user-message {
         justify-content: flex-end;
+        align-items: flex-end;
+        padding-right: 0; // 确保不超出右侧
+        margin-right: 0; // 确保不超出右侧
         
         .message-content {
           align-items: flex-end;
+          max-width: 100%; // 确保不超出父容器
+          box-sizing: border-box;
           
           .message-bubble {
             background: #e6f7ff;
@@ -400,15 +499,22 @@
         display: flex;
         flex-direction: column;
         max-width: 70%;
+        min-width: 0; // 防止flex子元素溢出
         
         .message-bubble {
           padding: 15px 20px;
           margin-bottom: 10px;
           transition: all 0.3s ease;
+          min-width: 0; // 防止内容溢出
+          word-wrap: break-word;
+          overflow-wrap: break-word;
           
           .message-text {
             font-size: 26px;
             line-height: 1.5;
+            color: #333;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
           }
         }
         
@@ -830,4 +936,424 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+// ====== 自由对话模式样式 ======
+.conversation-page.free-mode {
+  // 完成练习按钮
+  .complete-btn {
+    margin-right: 20px;
+    border-radius: 50px;
+    padding: 15px 30px;
+    font-size: 26px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+
+    &:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+    }
+  }
+
+  // 对话区域调整
+  .free-conversation-area {
+    padding-top: 100px; // 为 header 留出空间
+    padding-bottom: 280px; // 为录音区域留出空间
+    height: calc(100vh - 100px - 280px);
+  }
+
+  // 录音区域
+  .record-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    padding: 20px 30px 40px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+    z-index: 100;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+
+    // 实时识别文本显示
+    .recognition-text-display {
+      width: 100%;
+      background: #f5f7fa;
+      border-radius: 20px;
+      padding: 20px 30px;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+
+      .recognition-text {
+        font-size: 28px;
+        color: #333;
+        line-height: 1.6;
+        word-break: break-word;
+        text-align: center;
+      }
+    }
+
+    // 录音按钮容器
+    .record-button-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+
+      // 录音按钮
+      .record-button {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: #ffffff;
+        border: 4px solid #667eea;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+
+        &:active {
+          transform: scale(0.95);
+        }
+
+        &.recording {
+          border-color: #ff4d4f;
+          background: #fff1f0;
+          box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+      }
+
+      // 提示文字
+      .record-hint {
+        font-size: 28px;
+        color: #666;
+        font-weight: 500;
+      }
+    }
+  }
+
+  // 消息样式简化（自由对话不需要录音气泡等）
+  .message-wrapper {
+    margin-bottom: 30px;
+  }
+}
+
+// 录音脉冲动画
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+// 自由对话 - 录音气泡样式
+.free-mode {
+  // 完成练习按钮
+  .complete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  // 录音气泡容器
+  .audio-bubble-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 80%;
+  }
+
+  // 录音气泡
+  .audio-bubble {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+    
+    .audio-duration {
+      font-size: 28px;
+      color: white;
+      font-weight: 500;
+    }
+  }
+
+  // 识别文本气泡
+  .recognized-text-bubble {
+    background: #f5f5f5;
+    border-radius: 15px;
+    padding: 12px 16px;
+    
+    .recognized-text {
+      font-size: 26px;
+      color: #333;
+      line-height: 1.4;
+    }
+  }
+}
+
+// 评测进度提示
+.evaluation-progress-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  .evaluation-progress-content {
+    background: white;
+    border-radius: 20px;
+    padding: 40px 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    min-width: 400px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    
+    .progress-text {
+      font-size: 32px;
+      color: #333;
+      font-weight: 500;
+      text-align: center;
+    }
+    
+    .progress-count {
+      font-size: 28px;
+      color: #667eea;
+      font-weight: 600;
+    }
+  }
+}
+
+// 头部按钮样式
+.header-right {
+  .evaluation-progress-text {
+    font-size: 24px;
+    color: white;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 6px 12px;
+    border-radius: 12px;
+  }
+  
+  .view-report-btn,
+  .complete-exercise-btn {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    color: white !important;
+    font-size: 24px !important;
+    border-radius: 15px !important;
+    padding: 8px 16px !important;
+    height: auto !important;
+    
+    &:active {
+      background: rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    &.at-button--disabled {
+      opacity: 0.4 !important;
+      cursor: not-allowed !important;
+    }
+  }
+}
+
+// 消息容器（独立样式，用于非固定定位场景）
+.messages-container-standalone {
+  flex: 1;
+  padding: 100px 30px 150px; // 底部留出录音按钮空间
+  overflow-y: auto;
+}
+
+// 录音按钮区域
+.recording-button-section {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20px 30px;
+  background: white;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  
+  .record-button {
+    width: 300px;
+    height: 80px;
+    font-size: 32px;
+    border-radius: 40px;
+    
+    &.recording {
+      background: #ff4757 !important;
+      border-color: #ff4757 !important;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+  }
+}
+
+// 练习信息卡片
+.exercise-info-section {
+  position: fixed;
+  top: 92px;
+  left: 0;
+  right: 0;
+  z-index: 99;
+  background: white;
+  transition: max-height 0.3s ease;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  
+  &.expanded {
+    max-height: 500px;
+  }
+  
+  &.collapsed {
+    max-height: 0;
+  }
+  
+  .exercise-info-card {
+    margin: 0;
+    border-radius: 0;
+  }
+  
+  .exercise-info-content {
+    padding: 20px;
+    
+    .exercise-title-text {
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 15px;
+    }
+    
+    .exercise-scenario {
+      font-size: 28px;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    
+    .vocabs-section {
+      margin-top: 20px;
+      
+      .vocabs-label {
+        font-size: 26px;
+        color: #666;
+        margin-bottom: 10px;
+        display: block;
+      }
+      
+      .vocabs-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+    }
+  }
+}
+
+// 语音气泡样式（使用总结报告中的样式）
+.voice-bubble {
+  background: #e6f7ff;
+  color: #333;
+  border-radius: 5px 20px 20px 20px;
+  padding: 15px 20px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 120px;
+  max-width: 200px;
+  width: auto; // 自动宽度
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-sizing: border-box; // 确保padding包含在宽度内
+  overflow: hidden; // 防止内容溢出
+  flex-shrink: 1; // 允许收缩，但不允许扩展超过max-width
+  
+  &:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+
+  &.playing {
+    background: #d4edff;
+  }
+
+  .voice-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+    min-width: 24px; // 确保图标区域有最小宽度
+  }
+
+  .voice-duration {
+    display: inline-block !important;
+    font-size: 30px !important;
+    color: #000 !important;
+    font-weight: 600 !important;
+    line-height: 1.5 !important;
+    white-space: nowrap !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-shrink: 0 !important;
+    min-width: 40px !important;
+  }
+}
+
+// 消息气泡样式（恢复之前的明显气泡效果）
+.message-bubble {
+  padding: 15px 20px;
+  margin-bottom: 10px;
+  transition: all 0.3s ease;
+  position: relative;
+  
+  .message-text {
+    font-size: 26px;
+    line-height: 1.5;
+    color: #333;
+    word-wrap: break-word;
+  }
+  
+  .streaming-indicator {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    
+    .streaming-dot {
+      font-size: 20px;
+      color: #667eea;
+      animation: blink 1s infinite;
+    }
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }

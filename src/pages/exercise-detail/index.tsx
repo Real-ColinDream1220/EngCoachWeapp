@@ -13,7 +13,7 @@ import Taro from '@tarojs/taro'
 import './index.scss'
 
 // 导入API服务
-import { unitAPI, exerciseAPI, reportAPI, audioAPI, studentAPI } from '../../utils/api_v2'
+import { unitAPI, exerciseAPI, reportAPI, audioAPI } from '../../utils/api_v2'
 
 // 模拟练习数据
 const mockExercises = {
@@ -475,57 +475,32 @@ export default class ExerciseDetail extends Component {
         const studentInfo = Taro.getStorageSync('studentInfo')
         const studentId = studentInfo?.id
         
-        console.log('学生信息:', studentInfo)
-        console.log('学生ID:', studentId)
-        console.log('练习ID:', currentExercise.id)
-        
-        if (!studentId) {
-          console.error('❌ 未找到学生ID，无法删除旧数据')
-          Taro.showToast({
-            title: '未找到学生信息，请重新登录',
-            icon: 'none',
-            duration: 2000
-          })
-          return
-        }
-        
-        if (!currentExercise.id) {
-          console.error('❌ 未找到练习ID')
-          Taro.showToast({
-            title: '练习信息错误',
-            icon: 'none'
-          })
-          return
-        }
-        
-        Taro.showLoading({ title: '清理旧数据...' })
-        
-        try {
-          console.log('调用删除接口:')
-          console.log('  - student_id =', studentId)
-          console.log('  - exercise_id =', currentExercise.id)
-          console.log('  - is_free = false (结构化练习)')
+        if (studentId && currentExercise.id) {
+          Taro.showLoading({ title: '清理旧数据...' })
           
-          // 使用新接口删除该学生在该练习下的所有音频+报告数据
-          const deleteResult = await studentAPI.deleteStudentExerciseData(
-            studentId,
-            currentExercise.id
-          )
-          
-          console.log('删除接口响应:', deleteResult)
-          
-          if (deleteResult.success) {
-            console.log('✅ 旧练习数据删除成功（音频+报告）')
-          } else {
-            console.log('⚠️  删除接口返回失败，但继续执行:', deleteResult.message)
+          try {
+            console.log('学生ID:', studentId)
+            console.log('练习ID:', currentExercise.id)
+            console.log('is_free: false (结构化练习)')
+            
+            // 使用新接口删除该学生在该练习下的所有音频
+            const deleteResult = await audioAPI.deleteAudioByStudentExercise(
+              studentId,
+              currentExercise.id,
+              false  // is_free: false = 结构化练习，true = 自由对话
+            )
+            
+            if (deleteResult.success) {
+              console.log('✅ 旧音频记录删除成功')
+            } else {
+              console.log('⚠️  删除旧音频失败，但继续执行:', deleteResult.message)
+            }
+          } catch (deleteError) {
+            console.error('删除旧音频失败:', deleteError)
+            console.log('⚠️  忽略删除错误，继续执行')
           }
-        } catch (deleteError: any) {
-          console.error('❌ 删除旧练习数据失败:', deleteError)
-          console.error('错误详情:', deleteError.message || deleteError)
-          console.log('⚠️  忽略删除错误，继续执行')
         }
         
-        Taro.hideLoading()
         console.log('=================================\n')
       }
       
@@ -557,7 +532,7 @@ export default class ExerciseDetail extends Component {
   }
 
   handleViewSummary = () => {
-    const { currentExercise } = this.state
+    const { currentExercise, reportStatus } = this.state
     
     if (!currentExercise || !currentExercise.id) {
       Taro.showToast({
@@ -567,27 +542,55 @@ export default class ExerciseDetail extends Component {
       return
     }
     
-    // 获取学生信息
-    const studentInfo = Taro.getStorageSync('studentInfo')
-    const studentId = studentInfo?.id
-    
-    if (!studentId) {
+    // 检查report状态
+    if (reportStatus === 'generating') {
       Taro.showToast({
-        title: '未找到学生信息，请重新登录',
-        icon: 'none'
+        title: '学习建议生成中，请稍候...',
+        icon: 'loading',
+        duration: 2000
       })
       return
     }
     
-    // 跳转到报告页面（与teacher页面逻辑完全一致）
-    console.log('查看总结报告:', { studentId, exerciseId: currentExercise.id })
+    if (reportStatus === 'empty' || reportStatus === 'unknown') {
+      Taro.showToast({
+        title: '暂无学习建议',
+        icon: 'none',
+        duration: 2000
+      })
+      return
+    }
+    
+    console.log('查看总结:', { exerciseId: currentExercise.id, reportStatus })
+    
+    // 跳转到报告页面
     Taro.navigateTo({
-      url: `/pages/report/index?exerciseId=${currentExercise.id}&studentId=${studentId}`
+      url: `/pages/report/index?exerciseId=${currentExercise.id}`
     })
   }
 
   handleBack = () => {
     Taro.navigateBack()
+  }
+
+  // 处理自由练习按钮点击
+  handleFreePractice = () => {
+    const { unitId } = this.state
+    
+    console.log('点击自由练习', { unitId })
+    
+    if (!unitId) {
+      Taro.showToast({
+        title: '缺少单元信息',
+        icon: 'none'
+      })
+      return
+    }
+    
+    // 跳转到对话页面，传递自由对话标识
+    Taro.navigateTo({
+      url: `/pages/conversation/index?unitId=${unitId}&mode=free`
+    })
   }
 
   render() {
@@ -631,6 +634,12 @@ export default class ExerciseDetail extends Component {
               <Text className='header-title'>练习详情</Text>
             </View>
             <View className='header-right'>
+              <View 
+                className='free-practice-btn'
+                onClick={this.handleFreePractice}
+              >
+                <Text className='free-practice-text'>自由练习</Text>
+              </View>
               <Text className='user-name'>{this.state.studentName}</Text>
             </View>
           </View>
@@ -718,13 +727,19 @@ export default class ExerciseDetail extends Component {
                 {currentExercise.isCompleted ? (
                   // 已完成状态：显示"查看总结"和"重新练习"按钮
                   <>
-                    <SafeAtButton 
-                      type='primary' 
-                      onClick={this.handleViewSummary}
-                      className='action-btn'
-                    >
-                      查看总结
-                    </SafeAtButton>
+                    <View className='action-btn-wrapper'>
+                      <SafeAtButton 
+                        type='primary' 
+                        onClick={this.handleViewSummary}
+                        className='action-btn'
+                        disabled={this.state.reportStatus === 'generating' || this.state.reportStatus === 'empty'}
+                      >
+                        {this.state.reportStatus === 'generating' ? '生成中...' : '查看总结'}
+                      </SafeAtButton>
+                      {this.state.reportStatus === 'generating' && (
+                        <Text className='status-hint'>学习建议生成中，请稍候</Text>
+                      )}
+                    </View>
                     <SafeAtButton 
                       type='secondary' 
                       onClick={this.handleStartExercise}

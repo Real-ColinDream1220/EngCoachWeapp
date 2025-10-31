@@ -15,10 +15,15 @@ api_v2/
 ├── exercise.ts        # 练习接口 ✨
 ├── student.ts         # 学生接口 ✨
 ├── audio.ts           # 音频接口 ✨
-└── report.ts          # 报告接口 ✨
+├── report.ts          # 报告接口 ✨
+├── soe.ts             # 语音评测接口 ✨
+├── voicePack.ts       # 数字人语音接口 ✨
+├── content.ts         # AI内容生成接口 ✨
+├── file.ts            # 文件上传接口 ✨
+└── aiChat.ts          # AI聊天接口 ✨✨
 ```
 
-## 🎯 接口总览（26个）
+## 🎯 接口总览（28个）
 
 ### 1. 章节管理 (Chapter) - 4个接口
 
@@ -358,10 +363,54 @@ const chapters = await chapterAPI.getChapterList(2931)
 console.log(chapters.data?.chapters)
 ```
 
+### 14. AI 聊天接口 (AI Chat) - 2个接口 ✨✨
+
+```typescript
+import { aiChatAPI } from '@/utils/api_v2'
+
+// 14.1 获取对话主题 ID
+const response = await aiChatAPI.topicEdit()
+// POST /api/ai/chat/topic_edit
+// 返回: { id: number }
+
+// 14.2 AI 对话完成（SSE流式输出）
+await aiChatAPI.completions({
+  tid: number,                       // 对话主题ID
+  text: string,                      // 用户消息文本
+  onMessage: (chunk: string) => void, // 接收到消息块的回调
+  onComplete: () => void,             // 完成回调
+  onError?: (error: any) => void      // 错误回调（可选）
+})
+// POST /api/ai/chat/completions
+// 参数: { tid, text, files: [], agent_id: 5864, ai_config: { agent_id: 5864 } }
+// 响应: SSE 流式数据
+
+// 使用示例
+const topicResponse = await aiChatAPI.topicEdit()
+const tid = topicResponse.data?.id || topicResponse.result?.id
+
+let fullResponse = ''
+await aiChatAPI.completions({
+  tid,
+  text: '你好',
+  onMessage: (chunk) => {
+    fullResponse += chunk
+    console.log('接收到:', chunk)
+  },
+  onComplete: () => {
+    console.log('完成！完整回复:', fullResponse)
+  },
+  onError: (error) => {
+    console.error('错误:', error)
+  }
+})
+```
+
 ## ✅ 已完成
 
-- ✅ 26个接口全部实现
+- ✅ 28个接口全部实现
 - ✅ 完整的 TypeScript 类型定义
+- ✅ 自由对话功能（SSE流式输出）
 - ✅ 统一的请求/响应处理
 - ✅ 自动 Token 认证
 - ✅ 错误处理和日志

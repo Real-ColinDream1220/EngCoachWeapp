@@ -1184,13 +1184,15 @@ export default class ChapterList extends Component {
                           <AtIcon value="search" size='20' color='white' />
                           <Text className='button-text'>查找课程</Text>
                         </SafeAtButton>
-                        {/* <SafeAtButton
+                        {/* 隐藏重置按钮
+                        <SafeAtButton
                           onClick={this.resetForm}
                           className='reset-button'
                         >
                           <AtIcon value="reload" size='20' color='#667eea' />
                           <Text className='button-text'>重置</Text>
-                        </SafeAtButton> */}
+                        </SafeAtButton>
+                        */}
                       </View>
 
                   </SafeAtAccordion>

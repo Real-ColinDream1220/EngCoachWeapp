@@ -33,8 +33,8 @@ export const soeAPI = {
         engineType: '16k_en',       // 固定值：16k_en
         scoreCoeff: '1.0',          // 固定值：1.0
         evalMode: '1',              // 固定值：1
-        recMode: '0',               // 固定值：0
-        voiceFormat: 'wav'          // 固定值：wav
+        recMode: '1',               // 固定值：1
+        voiceFormat: 'pcm'          // 固定值：pcm（与picbook一致）
       }
       
       console.log('SOE 请求参数:', formData)
