@@ -18,4 +18,5 @@ export * from './aiChat'
 export * from './speechAudio'
 export * from './speechReport'
 export * from './nls'
+export * from './audio2text'
 

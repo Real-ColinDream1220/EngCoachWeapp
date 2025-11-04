@@ -1037,15 +1037,15 @@ export default class ChapterList extends Component {
               <Text className='header-title'>学习章节</Text>
             </View>
             <View className='header-right'>
-              {/* <SafeAtButton
+              <SafeAtButton
                 type='secondary'
                 size='small'
-                onClick={() => Taro.navigateTo({ url: '/pages/smart-question/index' })}
-                className='smart-question-btn'
+                onClick={() => Taro.navigateTo({ url: '/pages/recording-test/index' })}
+                className='test-btn'
               >
-                <AtIcon value='bulb' size='16' color='#667eea' />
-                <Text className='btn-text'>智能出题</Text>
-              </SafeAtButton> */}
+                <AtIcon value='sound' size='16' color='#667eea' />
+                <Text className='btn-text'>录音测试</Text>
+              </SafeAtButton>
               <Text className='user-name'>{this.state.studentName}</Text>
             </View>
           </View>

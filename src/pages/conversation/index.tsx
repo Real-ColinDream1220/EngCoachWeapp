@@ -954,33 +954,13 @@ export default class Conversation extends Component {
   }
 
   /**
-   * 初始化NLS语音识别服务
+   * 初始化语音识别服务（使用后端API）
    */
   initVoiceRecognitionService = async () => {
     try {
-      // 获取NLS Token
-      const nlsResponse = await nlsAPI.getNlsToken()
-      if (!nlsResponse.success) {
-        throw new Error('获取NLS Token失败')
-      }
-
-      const tokenData = (nlsResponse.data as any)?.Token || (nlsResponse.result as any)?.Token
-      const token = tokenData?.Id || ''
-      
-      // AppKey硬编码
-      const appKey = 'tRAwRgCPdmM3pqeJ'
-      
-      if (!token) {
-        throw new Error('NLS Token为空')
-      }
-
-      // 创建语音识别服务
+      // 创建语音识别服务（不再需要NLS Token和AppKey）
       this.voiceRecognitionService = new TaroVoiceRecognitionService(
-        {
-          token,
-          appKey,
-          autoStopDelay: 1000 // 停止后1000ms断开连接
-        },
+        {}, // 配置为空，因为不再需要NLS相关配置
         {
           onResult: (text: string, isFinal: boolean) => {
             this.recognizedText = text
@@ -1003,8 +983,7 @@ export default class Conversation extends Component {
   }
 
   /**
-   * 开始录音（启动NLS识别）
-   * 每次点击都会重新连接WebSocket，确保可以多次识别
+   * 开始录音（启动语音识别）
    */
   handleStartRecording = async () => {
     // 如果服务存在但正在识别，先停止并销毁
@@ -1032,17 +1011,17 @@ export default class Conversation extends Component {
       recordingStartTime: startTime
     })
 
-    // 启动NLS识别（会创建新的WebSocket连接）
+    // 启动录音（会在停止时自动调用API进行识别）
     try {
       await this.voiceRecognitionService.start()
     } catch (error: any) {
       this.setState({ isRecording: false })
-      Taro.showToast({ title: '启动识别失败', icon: 'none' })
+      Taro.showToast({ title: '启动录音失败', icon: 'none' })
     }
   }
 
   /**
-   * 停止录音（包含NLS识别逻辑）
+   * 停止录音（录音停止后会自动调用API进行识别）
    */
   handleStopRecording = async () => {
     const { recordingStartTime, tid } = this.state as any
@@ -1051,28 +1030,21 @@ export default class Conversation extends Component {
     
     this.setState({ isRecording: false })
 
-    // 停止NLS识别
+    // 停止录音（会触发onStop回调，在回调中调用API进行识别）
     if (this.voiceRecognitionService) {
       await this.voiceRecognitionService.stop()
       
-      // 等待500ms确保识别完整性，然后再断开WebSocket
-      // 同时等待最终识别结果到达
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // 等待识别API调用完成（API调用在onStop回调中进行）
+      // 给足够的时间让API调用完成并更新recognizedText
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // 再次检查识别文本（可能在等待期间收到最终结果）
-      // 等待一小段时间让所有WebSocket消息处理完成
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // 获取最终识别文本和PCM文件路径
-      // 优先使用 getCurrentText()（从WebSocket累积的文本）
+      // 获取最终识别文本和WAV文件路径
+      // 优先使用 getCurrentText()（从API返回的文本）
       // 其次使用 recognizedText（从onResult回调更新的文本）
       const serviceText = this.voiceRecognitionService.getCurrentText()
       const callbackText = this.recognizedText
       const ref_text = serviceText || callbackText || ''
       const pcmFilePath = this.voiceRecognitionService.getPcmFilePath()
-
-      // 断开WebSocket连接（保证识别完整性后再断开）
-      await this.voiceRecognitionService.destroy()
 
       // 保存录音信息到recordedMessages
       const messageId = Date.now()

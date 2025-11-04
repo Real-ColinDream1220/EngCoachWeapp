@@ -5,7 +5,8 @@ export default {
     'pages/exercise-detail/index',
     'pages/conversation/index',
     'pages/teacher/index',
-    'pages/report/index'
+    'pages/report/index',
+    'pages/recording-test/index'
   ],
   window: {
     backgroundTextStyle: 'light',
