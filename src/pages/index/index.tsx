@@ -1036,7 +1036,7 @@ export default class ChapterList extends Component {
               <AtIcon value='tags' size='32' color='white' />
               <Text className='header-title'>学习章节</Text>
             </View>
-            <View className='header-right'>
+            {/* <View className='header-right'>
               <SafeAtButton
                 type='secondary'
                 size='small'
@@ -1047,7 +1047,7 @@ export default class ChapterList extends Component {
                 <Text className='btn-text'>录音测试</Text>
               </SafeAtButton>
               <Text className='user-name'>{this.state.studentName}</Text>
-            </View>
+            </View> */}
           </View>
         </View>
 

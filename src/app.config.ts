@@ -4,6 +4,7 @@ export default {
     'pages/index/index',
     'pages/exercise-detail/index',
     'pages/conversation/index',
+    'pages/free-conversation/index',
     'pages/teacher/index',
     'pages/report/index',
     'pages/recording-test/index'

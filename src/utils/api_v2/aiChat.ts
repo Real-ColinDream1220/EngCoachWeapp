@@ -37,12 +37,12 @@ export const aiChatAPI = {
   completions: async (params: {
     tid: number
     text: string
-    agent_id?: number  // 可选，默认5864
+    agent_id?: number  // 默认5778
     onMessage: (chunk: string) => void
     onComplete: () => void
     onError?: (error: any) => void
   }) => {
-    const { tid, text, agent_id = 5864, onMessage, onComplete, onError } = params
+    const { tid, text, agent_id = 5778, onMessage, onComplete, onError } = params
     
     console.log('调用 completions 接口...')
     console.log('参数:', { tid, text: text.substring(0, 100) + '...' })
@@ -126,7 +126,9 @@ export const aiChatAPI = {
       
       console.log(`📦 收到 ${chunks.length} 个 SSE 块`)
       
-      // 实时解析并输出每一块内容
+      // 先解析所有块，提取完整内容
+      const contentChunks: string[] = []
+      
       for (const chunk of chunks) {
         if (!chunk.trim()) continue
         
@@ -162,12 +164,11 @@ export const aiChatAPI = {
               break
             }
             
-            // 只提取 event === "message" 的 content 内容，实时流式输出
+            // 只提取 event === "message" 的 content 内容
             if (data.event === 'message' && data.content) {
-              console.log('📝 实时提取内容片段:', data.content)
+              console.log('📝 提取内容片段:', data.content)
               fullContent += data.content
-              // 实时调用 onMessage，不使用模拟流式
-              onMessage(data.content)
+              contentChunks.push(data.content)
             }
             
             // 忽略 workflow 等其他事件
@@ -175,6 +176,28 @@ export const aiChatAPI = {
             // 忽略非 JSON 数据
             console.warn('⚠️  解析JSON失败:', e, 'dataContent:', dataContent.substring(0, 50))
           }
+        }
+      }
+      
+      // 模拟流式输出：逐字符显示内容，给用户真实的流式输出体验
+      // 由于Taro.request是一次性返回完整响应，我们需要模拟流式效果
+      // 将每个chunk的内容逐字符显示，模拟真实的打字机效果
+      for (const chunk of contentChunks) {
+        // 如果chunk较大，逐字符显示；如果较小，直接显示
+        if (chunk.length > 10) {
+          // 逐字符显示，模拟打字机效果
+          for (let i = 0; i < chunk.length; i++) {
+            onMessage(chunk[i])
+            // 每个字符之间延迟，但不要太慢（根据字符类型调整）
+            const char = chunk[i]
+            // 中文字符延迟稍长，标点符号延迟更长
+            const delay = char.match(/[\u4e00-\u9fa5]/) ? 30 : (char.match(/[，。！？；：]/) ? 50 : 20)
+            await new Promise(resolve => setTimeout(resolve, delay))
+          }
+        } else {
+          // 小chunk直接显示
+          onMessage(chunk)
+          await new Promise(resolve => setTimeout(resolve, 30))
         }
       }
       

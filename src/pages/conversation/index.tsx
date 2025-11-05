@@ -15,6 +15,7 @@ import './index.scss'
 import { aiChatAPI } from '../../utils/api_v2/aiChat'
 import { TaroVoiceRecognitionService } from '../../utils/voiceRecognition/TaroVoiceRecognitionService'
 import { nlsAPI } from '../../utils/api_v2/nls'
+import { contentAPI } from '../../utils/api_v2/content'
 
 // 模拟练习数据
 const mockExercises = {
@@ -426,7 +427,7 @@ export default class Conversation extends Component {
       await aiChatAPI.completions({
         tid,
         text: JSON.stringify({ vocabs: vocabsArr }),
-        agent_id: 5864,  // 明确指定agent_id为5864
+        agent_id: 6217,  // 明确指定agent_id为6217
         onMessage: (chunk: string) => {
           fullResponse += chunk;
           // 实时更新消息列表中的AI消息文本（强制立即更新）
@@ -591,6 +592,22 @@ export default class Conversation extends Component {
     }))
 
     try {
+      // 步骤0: 删除学生在该练习的所有旧数据（音频和报告）
+      this.updateEvaluationProgress(0, recordedCount + 1, '正在清理旧数据...')
+      
+      const { studentAPI } = await import('../../utils/api_v2')
+      try {
+        const deleteResult = await studentAPI.deleteStudentExerciseData(studentId, exerciseId, false)
+        if (deleteResult.success) {
+          console.log('✅ 旧数据删除成功')
+        } else {
+          console.warn('⚠️ 删除旧数据失败，但继续执行:', deleteResult.message)
+        }
+      } catch (deleteError) {
+        console.error('删除旧数据失败:', deleteError)
+        console.warn('⚠️ 忽略删除错误，继续执行')
+      }
+
       // 步骤1: 上传所有录音文件并创建audio记录
       this.updateEvaluationProgress(0, recordedCount + 1, '正在上传录音文件...')
       
@@ -1032,26 +1049,103 @@ export default class Conversation extends Component {
 
     // 停止录音（会触发onStop回调，在回调中调用API进行识别）
     if (this.voiceRecognitionService) {
+      // 清空之前的识别文本
+      this.recognizedText = ''
+      
       await this.voiceRecognitionService.stop()
       
-      // 等待识别API调用完成（API调用在onStop回调中进行）
-      // 给足够的时间让API调用完成并更新recognizedText
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 等待audio2text识别完成（轮询直到有识别结果）
+      console.log('⏳ 等待audio2text识别完成...')
+      let recognizedText = ''
+      const maxWaitTime = 30000 // 最大等待30秒
+      const startWaitTime = Date.now()
+      const pollInterval = 200 // 每200ms轮询一次
       
-      // 获取最终识别文本和WAV文件路径
-      // 优先使用 getCurrentText()（从API返回的文本）
-      // 其次使用 recognizedText（从onResult回调更新的文本）
-      const serviceText = this.voiceRecognitionService.getCurrentText()
-      const callbackText = this.recognizedText
-      const ref_text = serviceText || callbackText || ''
+      while (!recognizedText && (Date.now() - startWaitTime) < maxWaitTime) {
+        // 优先使用 getCurrentText()（从API返回的文本）
+        const serviceText = this.voiceRecognitionService.getCurrentText()
+        // 其次使用 recognizedText（从onResult回调更新的文本）
+        const callbackText = this.recognizedText
+        recognizedText = serviceText || callbackText || ''
+        
+        if (recognizedText) {
+          console.log('✅ audio2text识别完成，识别文本:', recognizedText)
+          break
+        }
+        
+        // 等待一段时间后再次检查
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
+      
+      if (!recognizedText) {
+        console.warn('⚠️ audio2text识别超时或失败，使用空文本')
+        Taro.showToast({
+          title: '语音识别超时，请重试',
+          icon: 'none',
+          duration: 2000
+        })
+        return // 识别失败，不继续后续流程
+      }
+      
       const pcmFilePath = this.voiceRecognitionService.getPcmFilePath()
 
       // 保存录音信息到recordedMessages
       const messageId = Date.now()
-      const finalText = ref_text ? ref_text.trim() : ''
+      const rawText = recognizedText ? recognizedText.trim() : ''
+      
+      // 先调用 content_generate 接口处理识别文本
+      let processedRefText = rawText
+      let textToSend = rawText
+      
+      if (rawText) {
+        try {
+          console.log('📝 调用 content_generate 处理识别文本...')
+          console.log('原始识别文本:', rawText)
+          
+          // 调用 content_generate 接口，agent_id 为 6215
+          const contentResult = await contentAPI.generate(6215, rawText)
+          
+          // 检查是否有 task_id（异步任务）
+          const taskId = contentResult.data?.task_id || contentResult.result?.task_id
+          if (taskId) {
+            // 异步任务，需要轮询监听
+            console.log('⏳ content_generate 是异步任务，开始轮询...')
+            const pollResult = await contentAPI.pollUntilComplete(taskId)
+            if (pollResult.success && pollResult.content) {
+              processedRefText = pollResult.content.trim()
+              textToSend = processedRefText
+              console.log('✅ content_generate 处理完成，规范化文本:', processedRefText)
+            } else {
+              console.warn('⚠️ content_generate 处理失败，使用原始文本')
+              processedRefText = rawText
+              textToSend = rawText
+            }
+          } else {
+            // 同步任务，直接获取 content
+            const processedContent = contentResult.data?.content || contentResult.result?.content || ''
+            if (processedContent) {
+              processedRefText = processedContent.trim()
+              textToSend = processedRefText
+              console.log('✅ content_generate 处理完成，规范化文本:', processedRefText)
+            } else {
+              console.warn('⚠️ content_generate 返回内容为空，使用原始文本')
+              processedRefText = rawText
+              textToSend = rawText
+            }
+          }
+        } catch (error) {
+          console.error('❌ content_generate 处理失败:', error)
+          console.warn('⚠️ 使用原始识别文本作为 ref_text')
+          // 如果处理失败，使用原始文本
+          processedRefText = rawText
+          textToSend = rawText
+        }
+      }
+      
+      // 使用处理后的文本作为 ref_text
       const recordData = {
         pcmFilePath: pcmFilePath || '',
-        ref_text: finalText, // 识别文本作为ref_text存储
+        ref_text: processedRefText, // 使用 content_generate 处理后的文本作为 ref_text
         duration: duration,
         timestamp: Date.now()
       }
@@ -1079,11 +1173,11 @@ export default class Conversation extends Component {
       // 滚动到最新消息
       this.scrollToLatestMessage()
 
-      // 发送给智能体的消息
-      console.log('📤 发送给智能体的消息:', finalText || '(空文本)')
+      // 发送给智能体的消息（使用处理后的文本）
+      console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
       
-      // 识别文本作为下一条用户消息，通过completions接口的text参数发送给AI
-      await this.sendUserMessageToAI(finalText, tid || null)
+      // 使用处理后的文本发送给AI
+      await this.sendUserMessageToAI(textToSend, tid || null)
     }
   }
 
@@ -1128,8 +1222,8 @@ export default class Conversation extends Component {
 
       await aiChatAPI.completions({
         tid,
-        text: trimmedText, // 使用trim后的文本
-        agent_id: 5864, // 明确指定agent_id
+        text: trimmedText, // 使用trim后的文本（来自audio2text识别结果）
+        agent_id: 6217, // 明确指定agent_id为6217
         onMessage: (chunk: string) => {
           fullResponse += chunk
           // 智能体的流式消息

@@ -49,14 +49,15 @@ export const studentAPI = {
 
   // 删除学生练习数据（音频和报告）
   // 用于重新练习时清除旧数据
-  deleteStudentExerciseData: (student_id: number, exercise_id: number) => {
+  // @param is_free - 是否为自由对话: true = 自由对话，false = 结构化练习
+  deleteStudentExerciseData: (student_id: number, exercise_id: number, is_free: boolean = false) => {
     return request<DeleteResponse>({
       url: '/api/oral_eng/del_student_exercise_data',
       method: 'DELETE',
       params: { 
         student_id,
         exercise_id,
-        is_free: false
+        is_free
       }
     })
   }

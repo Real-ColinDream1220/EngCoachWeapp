@@ -12,6 +12,17 @@ const SafeAtAccordion = AtAccordion || (() => <View>Accordion not available</Vie
 import Taro from '@tarojs/taro'
 import './index.scss'
 
+// 按单元分组的练习数据结构
+interface UnitExerciseGroup {
+  unitId: number
+  unitName: string
+  exercises: Array<{
+    id: number
+    title: string
+    isCompleted: boolean
+  }>
+}
+
 interface StudentProgress {
   studentId: number
   studentName: string
@@ -22,15 +33,19 @@ interface StudentProgress {
     id: number
     title: string
     unitName: string
+    unitId: number
     isCompleted: boolean
   }>
+  // 按单元分组的练习数据
+  unitExerciseGroups: UnitExerciseGroup[]
 }
 
 export default class TeacherPage extends Component {
   state = {
     loading: true,
     students: [] as StudentProgress[],
-    expandedStudentId: null as number | null
+    expandedStudentId: null as number | null,
+    expandedUnitIds: {} as Record<string, boolean> // 格式: "studentId-unitId" => boolean
   }
 
   componentDidMount() {
@@ -133,6 +148,36 @@ export default class TeacherPage extends Component {
             })
             console.log('✓ 练习列表已按单元和练习ID排序')
 
+            // 按单元分组练习
+            const unitExerciseGroupsMap = new Map<number, UnitExerciseGroup>()
+            
+            for (const exercise of exercisesList) {
+              if (!unitExerciseGroupsMap.has(exercise.unitId)) {
+                const unit = units.find(u => u.id === exercise.unitId)
+                unitExerciseGroupsMap.set(exercise.unitId, {
+                  unitId: exercise.unitId,
+                  unitName: exercise.unitName,
+                  exercises: []
+                })
+              }
+              
+              const group = unitExerciseGroupsMap.get(exercise.unitId)!
+              group.exercises.push({
+                id: exercise.id,
+                title: exercise.title,
+                isCompleted: exercise.isCompleted
+              })
+            }
+            
+            // 转换为数组并按单元ID排序
+            const unitExerciseGroups = Array.from(unitExerciseGroupsMap.values())
+            unitExerciseGroups.sort((a, b) => a.unitId - b.unitId)
+
+            console.log(`学生 ${studentName} 单元分组:`)
+            unitExerciseGroups.forEach(group => {
+              console.log(`  - 单元 ${group.unitName}: ${group.exercises.length} 个练习`)
+            })
+
             const progress = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0
 
             console.log(`学生 ${studentName} 最终统计:`)
@@ -146,7 +191,8 @@ export default class TeacherPage extends Component {
               totalExercises,
               completedExercises,
               progress,
-              exercises: exercisesList
+              exercises: exercisesList,
+              unitExerciseGroups
             }
           } catch (error) {
             console.error(`处理学生 ${student.id} 数据失败:`, error)
@@ -156,7 +202,8 @@ export default class TeacherPage extends Component {
               totalExercises: 0,
               completedExercises: 0,
               progress: 0,
-              exercises: []
+              exercises: [],
+              unitExerciseGroups: []
             }
           }
         })
@@ -191,12 +238,31 @@ export default class TeacherPage extends Component {
     })
   }
 
+  handleUnitClick = (studentId: number, unitId: number) => {
+    const key = `${studentId}-${unitId}`
+    this.setState((prevState: any) => ({
+      expandedUnitIds: {
+        ...prevState.expandedUnitIds,
+        [key]: !prevState.expandedUnitIds[key]
+      }
+    }))
+  }
+
   handleViewReport = (studentId: number, exerciseId: number) => {
     console.log('查看总结报告:', { studentId, exerciseId })
     
     // 跳转到报告页面
     Taro.navigateTo({
       url: `/pages/report/index?exerciseId=${exerciseId}&studentId=${studentId}`
+    })
+  }
+
+  handleViewFreeReport = (studentId: number, unitId: number) => {
+    console.log('查看自由练习报告:', { studentId, unitId })
+    
+    // 跳转到报告页面，传递 unitId 和 isFree=true 参数
+    Taro.navigateTo({
+      url: `/pages/report/index?unitId=${unitId}&studentId=${studentId}&isFree=true`
     })
   }
 
@@ -298,39 +364,82 @@ export default class TeacherPage extends Component {
                     className='student-progress'
                   />
 
-                  {/* 展开的练习列表 */}
+                  {/* 展开的练习列表（按单元分组） */}
                   {expandedStudentId === student.studentId && (
                     <View className='exercises-detail'>
                       <View className='exercises-header'>
                         <Text className='exercises-title'>练习详情</Text>
                       </View>
-                      {student.exercises.length > 0 ? (
-                        student.exercises.map((exercise) => (
-                          <View key={exercise.id} className='exercise-item'>
-                            <View className='exercise-info'>
-                              <View className='exercise-name-row'>
-                                <SafeAtTag
-                                  type={exercise.isCompleted ? 'primary' : 'default'}
-                                  size='small'
+                      {student.unitExerciseGroups && student.unitExerciseGroups.length > 0 ? (
+                        student.unitExerciseGroups.map((unitGroup) => {
+                          const unitKey = `${student.studentId}-${unitGroup.unitId}`
+                          const isUnitExpanded = this.state.expandedUnitIds[unitKey] !== false // 默认展开
+                          
+                          return (
+                            <View key={unitGroup.unitId} className='unit-group'>
+                              {/* 单元标题 */}
+                              <View className='unit-header'>
+                                <View 
+                                  className='unit-header-left' 
+                                  onClick={() => this.handleUnitClick(student.studentId, unitGroup.unitId)}
                                 >
-                                  {exercise.isCompleted ? '✓' : '○'}
-                                </SafeAtTag>
-                                <Text className='exercise-title'>{exercise.title}</Text>
+                                  <AtIcon value='folder' size='20' color='#667eea' />
+                                  <Text className='unit-title'>{unitGroup.unitName}</Text>
+                                  <Text className='unit-exercise-count'>
+                                    ({unitGroup.exercises.length} 个练习)
+                                  </Text>
+                                </View>
+                                <View className='unit-header-right'>
+                                  <View 
+                                    className='free-report-btn'
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      this.handleViewFreeReport(student.studentId, unitGroup.unitId)
+                                    }}
+                                  >
+                                    <AtIcon value='file-text' size='18' color='#52c41a' />
+                                    <Text className='free-report-text'>自由练习报告</Text>
+                                  </View>
+                                  <AtIcon
+                                    value={isUnitExpanded ? 'chevron-up' : 'chevron-down'}
+                                    size='18'
+                                    color='#667eea'
+                                    onClick={() => this.handleUnitClick(student.studentId, unitGroup.unitId)}
+                                  />
+                                </View>
                               </View>
-                              <Text className='exercise-unit'>{exercise.unitName}</Text>
+                              
+                              {/* 单元下的练习列表 */}
+                              <View className={`unit-exercises ${isUnitExpanded ? 'expanded' : 'collapsed'}`}>
+                                {unitGroup.exercises.map((exercise) => (
+                                  <View key={exercise.id} className='exercise-item'>
+                                    <View className='exercise-info'>
+                                      <View className='exercise-name-row'>
+                                        <SafeAtTag
+                                          type={exercise.isCompleted ? 'primary' : 'default'}
+                                          size='small'
+                                        >
+                                          {exercise.isCompleted ? '✓' : '○'}
+                                        </SafeAtTag>
+                                        <Text className='exercise-title'>{exercise.title}</Text>
+                                      </View>
+                                    </View>
+                                    {exercise.isCompleted && (
+                                      <SafeAtButton
+                                        type='secondary'
+                                        size='small'
+                                        onClick={() => this.handleViewReport(student.studentId, exercise.id)}
+                                        className='report-btn'
+                                      >
+                                        查看报告
+                                      </SafeAtButton>
+                                    )}
+                                  </View>
+                                ))}
+                              </View>
                             </View>
-                            {exercise.isCompleted && (
-                              <SafeAtButton
-                                type='secondary'
-                                size='small'
-                                onClick={() => this.handleViewReport(student.studentId, exercise.id)}
-                                className='report-btn'
-                              >
-                                查看报告
-                              </SafeAtButton>
-                            )}
-                          </View>
-                        ))
+                          )
+                        })
                       ) : (
                         <Text className='no-exercises'>暂无练习</Text>
                       )}

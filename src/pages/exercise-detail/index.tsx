@@ -69,7 +69,11 @@ export default class ExerciseDetail extends Component {
     loading: true,
     studentName: '学生', // 学生姓名
     reportStatus: 'unknown' as 'unknown' | 'generating' | 'completed' | 'empty', // report生成状态
-    isPolling: false // 是否正在轮询
+    isPolling: false, // 是否正在轮询
+    // 悬浮按钮位置
+    floatButtonX: 0, // 按钮X坐标
+    floatButtonY: 0, // 按钮Y坐标
+    isDragging: false // 是否正在拖动
   }
 
   // 标记是否是首次加载
@@ -105,7 +109,133 @@ export default class ExerciseDetail extends Component {
     if (unitId) {
       this.loadExerciseData(unitId, exerciseId || '')
     }
+    
+    // 初始化悬浮按钮位置（默认在右下角）
+    this.initFloatButtonPosition()
   }
+  
+  // 初始化悬浮按钮位置
+  initFloatButtonPosition = () => {
+    Taro.getSystemInfo({
+      success: (res) => {
+        const screenWidth = res.windowWidth
+        const screenHeight = res.windowHeight
+        const pixelRatio = res.pixelRatio || 1
+        // 按钮大小：120rpx 转换为 px，rpx到px的转换是除以设备宽度（750rpx = screenWidth）
+        const buttonSizePx = (120 * screenWidth) / 750
+        const margin = 30
+        this.setState({
+          floatButtonX: screenWidth - buttonSizePx / 2 - margin,
+          floatButtonY: screenHeight - buttonSizePx / 2 - margin
+        })
+      }
+    })
+  }
+  
+  // 拖动开始
+  handleFloatButtonTouchStart = (e: any) => {
+    this.setState({ isDragging: true })
+    this.hasMoved = false // 重置移动标志
+    // 记录起始触摸位置（小程序使用pageX/pageY或clientX/clientY）
+    const touch = e.touches[0] || e.changedTouches[0]
+    this.startX = touch.clientX || touch.pageX || 0
+    this.startY = touch.clientY || touch.pageY || 0
+    this.buttonStartX = this.state.floatButtonX
+    this.buttonStartY = this.state.floatButtonY
+  }
+  
+  // 拖动中
+  handleFloatButtonTouchMove = (e: any) => {
+    if (!this.state.isDragging) return
+    
+    const touch = e.touches[0] || e.changedTouches[0]
+    const currentX = touch.clientX || touch.pageX || 0
+    const currentY = touch.clientY || touch.pageY || 0
+    const deltaX = currentX - this.startX
+    const deltaY = currentY - this.startY
+    
+    // 如果移动距离超过阈值，标记为已移动
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      this.hasMoved = true
+    }
+    
+    // 计算新位置
+    let newX = this.buttonStartX + deltaX
+    let newY = this.buttonStartY + deltaY
+    
+    // 获取屏幕尺寸
+    Taro.getSystemInfo({
+      success: (res) => {
+        const screenWidth = res.windowWidth
+        const screenHeight = res.windowHeight
+        const buttonSizePx = (120 * screenWidth) / 750
+        const margin = 15
+        
+        // 限制在屏幕范围内
+        newX = Math.max(buttonSizePx / 2 + margin, Math.min(screenWidth - buttonSizePx / 2 - margin, newX))
+        newY = Math.max(buttonSizePx / 2 + margin, Math.min(screenHeight - buttonSizePx / 2 - margin, newY))
+        
+        this.setState({
+          floatButtonX: newX,
+          floatButtonY: newY
+        })
+      }
+    })
+  }
+  
+  // 拖动结束
+  handleFloatButtonTouchEnd = () => {
+    this.setState({ isDragging: false })
+    
+    // 获取屏幕尺寸，将按钮吸附到最近的边缘
+    Taro.getSystemInfo({
+      success: (res) => {
+        const screenWidth = res.windowWidth
+        const screenHeight = res.windowHeight
+        const buttonSizePx = (120 * screenWidth) / 750
+        const margin = 15
+        const centerX = screenWidth / 2
+        const { floatButtonX, floatButtonY } = this.state
+        
+        // 判断距离左边缘还是右边缘更近
+        let newX = floatButtonX
+        if (floatButtonX < centerX) {
+          // 吸附到左边缘
+          newX = buttonSizePx / 2 + margin
+        } else {
+          // 吸附到右边缘
+          newX = screenWidth - buttonSizePx / 2 - margin
+        }
+        
+        // 限制Y坐标在屏幕范围内
+        let newY = Math.max(buttonSizePx / 2 + margin, Math.min(screenHeight - buttonSizePx / 2 - margin, floatButtonY))
+        
+        this.setState({
+          floatButtonX: newX,
+          floatButtonY: newY
+        })
+      }
+    })
+  }
+  
+  // 点击悬浮按钮 - 跳转到自由对话练习页面
+  handleFloatButtonClick = () => {
+    // 如果发生了拖动，不触发点击事件
+    if (this.hasMoved) {
+      return
+    }
+    console.log('悬浮按钮被点击，跳转到自由对话练习页面')
+    Taro.navigateTo({
+      url: '/pages/free-conversation/index'
+    })
+  }
+  
+  // 拖动相关变量
+  private startX = 0
+  private startY = 0
+  private buttonStartX = 0
+  private buttonStartY = 0
+  private hasMoved = false // 是否发生了拖动
 
   componentDidShow() {
     console.log('=== ExerciseDetail componentDidShow ===')
@@ -624,6 +754,7 @@ export default class ExerciseDetail extends Component {
     console.log('===================')
 
     return (
+      <View className='exercise-detail-container'>
       <ScrollView className='exercise-detail-page' scrollY>
         <View className='page-content'>
         {/* 顶部导航栏 */}
@@ -633,7 +764,7 @@ export default class ExerciseDetail extends Component {
               <AtIcon value='list' size='32' color='white' />
               <Text className='header-title'>练习详情</Text>
             </View>
-            <View className='header-right'>
+            {/* <View className='header-right'>
               <View 
                 className='free-practice-btn'
                 onClick={this.handleFreePractice}
@@ -641,7 +772,7 @@ export default class ExerciseDetail extends Component {
                 <Text className='free-practice-text'>自由练习</Text>
               </View>
               <Text className='user-name'>{this.state.studentName}</Text>
-            </View>
+            </View> */}
           </View>
         </View>
 
@@ -710,7 +841,7 @@ export default class ExerciseDetail extends Component {
               )}
               
               {/* 词汇表 */}
-              {currentExercise.vocabs && Array.isArray(currentExercise.vocabs) && currentExercise.vocabs.length > 0 && (
+              {/* {currentExercise.vocabs && Array.isArray(currentExercise.vocabs) && currentExercise.vocabs.length > 0 && (
                 <View className='vocabs-section'>
                   <Text className='vocabs-title'>📚 关键词汇</Text>
                   <View className='vocabs-list'>
@@ -721,7 +852,7 @@ export default class ExerciseDetail extends Component {
                     ))}
                   </View>
                 </View>
-              )}
+              )} */}
               
               <View className='exercise-actions'>
                 {currentExercise.isCompleted ? (
@@ -816,6 +947,27 @@ export default class ExerciseDetail extends Component {
         </View>
         </View>
       </ScrollView>
+      
+      {/* 可拖动的悬浮按钮 */}
+      <View
+        className={`float-button ${this.state.isDragging ? 'dragging' : ''}`}
+        style={{
+          left: `${this.state.floatButtonX}px`,
+          top: `${this.state.floatButtonY}px`,
+          transform: `translate(-50%, -50%)`
+        }}
+        onTouchStart={this.handleFloatButtonTouchStart}
+        onTouchMove={this.handleFloatButtonTouchMove}
+        onTouchEnd={this.handleFloatButtonTouchEnd}
+        onClick={this.handleFloatButtonClick}
+      >
+        <TaroImage
+          src='https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
+          className='float-button-image'
+          mode='aspectFill'
+        />
+      </View>
+      </View>
     )
   }
 }

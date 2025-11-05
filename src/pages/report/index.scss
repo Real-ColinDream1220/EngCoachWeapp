@@ -92,7 +92,8 @@
 // 卡片样式（与 teacher 页面一致）
 .info-card,
 .audio-card,
-.summary-card {
+.summary-card,
+.unit-card {
   background: white;
   border-radius: 20px;
   padding: 30px;
@@ -118,6 +119,175 @@
 
   .at-divider {
     margin: 20px 0;
+  }
+}
+
+// 单元卡片样式
+.unit-section {
+  .unit-card {
+    .unit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      padding: 10px 0;
+      transition: all 0.2s ease;
+      
+      &:active {
+        opacity: 0.7;
+      }
+
+      .unit-header-left {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+
+        .unit-title {
+          font-size: 32px;
+          font-weight: bold;
+          color: #333;
+        }
+
+        .unit-description {
+          font-size: 24px;
+          color: #999;
+        }
+      }
+
+      .unit-toggle-icon {
+        flex-shrink: 0;
+        transition: transform 0.3s ease;
+      }
+    }
+
+    .unit-exercises {
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin-top 0.3s ease;
+      opacity: 1;
+      margin-top: 20px;
+      
+      &.collapsed {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+      }
+      
+      &.expanded {
+        max-height: none;
+        margin-top: 20px;
+      }
+
+      .exercise-section {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 15px;
+        transition: all 0.3s ease;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+
+        .exercise-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          cursor: pointer;
+          padding: 5px 0;
+          transition: all 0.2s ease;
+          
+          &:active {
+            opacity: 0.7;
+          }
+
+          .exercise-header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+
+            .exercise-title {
+              font-size: 28px;
+              font-weight: 600;
+              color: #333;
+            }
+
+            .exercise-description {
+              font-size: 24px;
+              color: #666;
+            }
+
+            .exercise-meta {
+              font-size: 22px;
+              color: #999;
+            }
+          }
+
+          .exercise-toggle-icon {
+            flex-shrink: 0;
+            transition: transform 0.3s ease;
+          }
+        }
+
+        .exercise-content {
+          overflow: hidden;
+          transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin-top 0.3s ease;
+          opacity: 1;
+          margin-top: 15px;
+          
+          &.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0;
+          }
+          
+          &.expanded {
+            max-height: none;
+            margin-top: 15px;
+          }
+
+          .exercise-audio-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+          }
+
+          .exercise-summary {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f9ff;
+            border-radius: 12px;
+            border: 1px solid #bae6fd;
+
+            .summary-header {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-bottom: 15px;
+
+              .summary-title {
+                font-size: 26px;
+                font-weight: 600;
+                color: #667eea;
+              }
+            }
+
+            .summary-content {
+              .summary-text {
+                font-size: 24px;
+                line-height: 1.8;
+                color: #333;
+                word-wrap: break-word;
+                white-space: pre-wrap;
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -229,7 +399,7 @@
       }
     }
 
-    // 音频气泡（左对齐）
+    // 音频气泡（左对齐）- 恢复原来的样式
     .voice-bubble {
       background: #e6f7ff;
       color: #333;
@@ -242,10 +412,13 @@
       gap: 12px;
       min-width: 120px;
       max-width: 200px;
-      flex: 1;
+      width: auto; // 自动宽度
       cursor: pointer;
       transition: all 0.2s ease;
-
+      box-sizing: border-box; // 确保padding包含在宽度内
+      overflow: hidden; // 防止内容溢出
+      flex-shrink: 1; // 允许收缩，但不允许扩展超过max-width
+      
       &:active {
         opacity: 0.7;
         transform: scale(0.98);
@@ -261,6 +434,7 @@
         justify-content: center;
         transform: rotate(180deg);
         flex-shrink: 0;
+        min-width: 24px; // 确保图标区域有最小宽度
       }
 
       .voice-duration {

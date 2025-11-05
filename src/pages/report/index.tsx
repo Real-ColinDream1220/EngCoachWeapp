@@ -12,6 +12,8 @@ export default class Report extends Component {
   state = {
     exerciseId: null as number | null,
     studentId: null as number | null,
+    unitId: null as number | null, // 单元ID（用于自由练习报告）
+    isFreeReport: false, // 是否为自由练习报告
     exerciseTitle: '',
     exerciseDescription: '',
     audioList: [] as any[],
@@ -44,67 +46,71 @@ export default class Report extends Component {
 
     // 获取路由参数
     const instance = Taro.getCurrentInstance()
-    const { exerciseId, studentId } = instance?.router?.params || {}
+    const { exerciseId, studentId, unitId, isFree } = instance?.router?.params || {}
 
-    if (exerciseId) {
-      let finalStudentId = studentId ? Number(studentId) : null
-      let studentName = '学生'
+    let finalStudentId = studentId ? Number(studentId) : null
+    const finalUnitId = unitId ? Number(unitId) : null
+    const isFreeReport = isFree === 'true'
+    let studentName = '学生'
 
-      // 如果没有从路由参数获取到 studentId（学生端），使用 passcode 查询
-      if (!finalStudentId) {
-        try {
-          console.log('=== 使用 passcode 查询学生信息 ===')
-          const passcode = Taro.getStorageSync('passcode')
-          console.log('Passcode:', passcode)
+    // 如果没有从路由参数获取到 studentId（学生端），使用 passcode 查询
+    if (!finalStudentId) {
+      try {
+        console.log('=== 使用 passcode 查询学生信息 ===')
+        const passcode = Taro.getStorageSync('passcode')
+        console.log('Passcode:', passcode)
 
-          if (passcode) {
-            // 导入 studentAPI
-            const { studentAPI } = await import('../../utils/api_v2')
+        if (passcode) {
+          // 导入 studentAPI
+          const { studentAPI } = await import('../../utils/api_v2')
 
-            // 使用 passcode 查询学生信息
-            const studentResult = await studentAPI.getStudentByKey(passcode)
-            console.log('学生查询响应:', studentResult)
+          // 使用 passcode 查询学生信息
+          const studentResult = await studentAPI.getStudentByKey(passcode)
+          console.log('学生查询响应:', studentResult)
 
-            if (studentResult.success) {
-              const student = studentResult.data || studentResult.result
-              if (student) {
-                finalStudentId = student.id
-                studentName = student.name || '学生'
-                console.log('✅ 查询到学生:', { id: finalStudentId, name: studentName })
-              } else {
-                console.error('未找到对应的学生')
-              }
+          if (studentResult.success) {
+            const student = studentResult.data || studentResult.result
+            if (student) {
+              finalStudentId = student.id
+              studentName = student.name || '学生'
+              console.log('✅ 查询到学生:', { id: finalStudentId, name: studentName })
             } else {
-              console.error('查询学生失败:', studentResult.message)
+              console.error('未找到对应的学生')
             }
           } else {
-            console.error('未找到 passcode')
+            console.error('查询学生失败:', studentResult.message)
           }
-        } catch (error) {
-          console.error('使用 passcode 查询学生信息失败:', error)
+        } else {
+          console.error('未找到 passcode')
         }
+      } catch (error) {
+        console.error('使用 passcode 查询学生信息失败:', error)
       }
-
-      // 读取学生信息（如果有）
-      const studentInfo = Taro.getStorageSync('studentInfo')
-      if (studentInfo && studentInfo.name && !studentId) {
-        studentName = studentInfo.name
-      }
-
-      this.setState({ 
-        exerciseId: Number(exerciseId),
-        studentId: finalStudentId,
-        studentName
-      }, () => {
-        this.loadReportData()
-      })
-    } else {
-      console.error('未获取到 exerciseId')
-      Taro.showToast({
-        title: '缺少练习ID',
-        icon: 'none'
-      })
     }
+
+    // 读取学生信息（如果有）
+    const studentInfo = Taro.getStorageSync('studentInfo')
+    if (studentInfo && studentInfo.name && !studentId) {
+      studentName = studentInfo.name
+    }
+
+    this.setState({ 
+      exerciseId: exerciseId ? Number(exerciseId) : null,
+      studentId: finalStudentId,
+      studentName,
+      unitId: finalUnitId,
+      isFreeReport
+    }, () => {
+      if (isFreeReport && finalUnitId) {
+        this.loadFreeReportData(finalUnitId)
+      } else if (exerciseId) {
+        // 如果有exerciseId，加载单个练习的报告
+        this.loadReportData()
+      } else {
+        // 如果没有exerciseId，显示空状态
+        this.setState({ isLoading: false })
+      }
+    })
   }
 
   componentWillUnmount() {
@@ -116,7 +122,7 @@ export default class Report extends Component {
     }
   }
 
-  // 加载报告数据
+  // 加载报告数据（单个练习）
   loadReportData = async () => {
     const { exerciseId, studentId } = this.state
 
@@ -135,6 +141,17 @@ export default class Report extends Component {
       return
     }
 
+    if (!exerciseId) {
+      console.error('缺少练习ID')
+      Taro.hideLoading()
+      Taro.showToast({
+        title: '缺少练习ID',
+        icon: 'none'
+      })
+      this.setState({ isLoading: false })
+      return
+    }
+
     try {
       Taro.showLoading({
         title: '加载中...',
@@ -145,7 +162,7 @@ export default class Report extends Component {
       const { audioAPI, exerciseAPI, studentAPI, reportAPI } = await import('../../utils/api_v2')
 
       // 1. 获取练习详情
-      const exerciseDetail = await exerciseAPI.getExerciseDetail(exerciseId!)
+      const exerciseDetail = await exerciseAPI.getExerciseDetail(exerciseId)
       console.log('练习详情:', exerciseDetail)
 
       const exerciseData = exerciseDetail.data || exerciseDetail.result
@@ -172,7 +189,7 @@ export default class Report extends Component {
       // 3. 获取 report 数据
       console.log('\n=== 获取 report 数据 ===')
       try {
-        const reportListResult = await reportAPI.getReportList(exerciseId!)
+        const reportListResult = await reportAPI.getReportList(exerciseId)
         console.log('报告列表响应:', reportListResult)
 
         if (reportListResult.success) {
@@ -216,7 +233,7 @@ export default class Report extends Component {
         // 忽略错误，继续执行
       }
 
-      // 2. 根据 student_id 和 exercise_id 获取音频列表
+      // 4. 根据 student_id 和 exercise_id 获取音频列表
       console.log('\n=== 获取音频列表 ===')
       const audioListResult = await audioAPI.getAudioList({
         student_id: studentId!,
@@ -431,9 +448,301 @@ export default class Report extends Component {
     }))
   }
 
-  render() {
-    const { exerciseTitle, exerciseDescription, audioList, studentName, isLoading, reportContent, expandedAudioIds, expandedEvaluationIds } = this.state
 
+
+  // 加载自由练习报告数据
+  loadFreeReportData = async (unitId: number) => {
+    const { studentId } = this.state
+
+    console.log('=== 加载自由练习报告数据 ===')
+    console.log('单元ID:', unitId)
+    console.log('学生ID:', studentId)
+
+    if (!studentId) {
+      console.error('缺少学生ID')
+      Taro.hideLoading()
+      Taro.showToast({
+        title: '缺少学生ID',
+        icon: 'none'
+      })
+      this.setState({ isLoading: false })
+      return
+    }
+
+    try {
+      Taro.showLoading({
+        title: '加载中...',
+        mask: true
+      })
+
+      // 导入API
+      const { speechReportAPI, speechAudioAPI, studentAPI, unitAPI } = await import('../../utils/api_v2')
+
+      // 获取学生信息
+      try {
+        const studentDetail = await studentAPI.getStudentDetail(studentId)
+        const studentData = studentDetail.data || studentDetail.result
+        if (studentData && studentData.name) {
+          this.setState({ studentName: studentData.name })
+        }
+      } catch (error) {
+        console.error('获取学生信息失败:', error)
+      }
+
+      // 获取单元信息
+      const unitResponse = await unitAPI.getUnitDetail(unitId)
+      const unit = unitResponse.data || unitResponse.result
+      const unitName = unit?.title || unit?.name || ''
+
+      // 获取自由练习报告列表
+      const reportListResult = await speechReportAPI.getReportList(unitId, studentId)
+      let reports: any[] = []
+      if (reportListResult.success) {
+        if (Array.isArray(reportListResult.data)) {
+          reports = reportListResult.data
+        } else if (Array.isArray(reportListResult.result)) {
+          reports = reportListResult.result
+        } else if (reportListResult.data?.items) {
+          reports = reportListResult.data.items
+        } else if (reportListResult.result?.items) {
+          reports = reportListResult.result.items
+        }
+      }
+
+      // 获取最新的报告（如果有）
+      const reportData = reports.length > 0 ? reports[0] : null
+      const reportContent = reportData?.content || ''
+
+      // 获取音频列表（通过 audio_ids）
+      let audioList: any[] = []
+      if (reportData && reportData.audio_ids && Array.isArray(reportData.audio_ids)) {
+        for (const audioId of reportData.audio_ids) {
+          try {
+            const audioDetail = await speechAudioAPI.getAudioDetail(audioId)
+            const audio = audioDetail.data || audioDetail.result
+            if (audio) {
+              audioList.push({
+                id: audio.id,
+                file: audio.file,
+                duration: Number(audio.duration) || 0,
+                messageText: audio.message_text || '',
+                refText: audio.ref_text || '',
+                evaluation: audio.evaluation || '',
+                createdAt: audio.created_at || audio.createdAt
+              })
+            }
+          } catch (error) {
+            console.error(`获取音频 ${audioId} 详情失败:`, error)
+          }
+        }
+
+        // 按创建时间排序
+        audioList.sort((a, b) => {
+          if (!a.createdAt) return 1
+          if (!b.createdAt) return -1
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        })
+      }
+
+      this.setState({
+        exerciseTitle: `${unitName} - 自由练习`,
+        exerciseDescription: '自由对话练习报告',
+        audioList,
+        reportData,
+        reportContent,
+        isLoading: false
+      })
+
+      Taro.hideLoading()
+    } catch (error) {
+      console.error('加载自由练习报告数据失败:', error)
+      Taro.hideLoading()
+      Taro.showToast({
+        title: '加载失败',
+        icon: 'none'
+      })
+      this.setState({ isLoading: false })
+    }
+  }
+
+  render() {
+    const { 
+      studentName, 
+      isLoading, 
+      expandedAudioIds, 
+      expandedEvaluationIds,
+      isFreeReport,
+      exerciseTitle,
+      exerciseDescription,
+      audioList,
+      reportContent
+    } = this.state
+
+    // 如果是自由练习报告，显示单个报告视图
+    if (isFreeReport) {
+      return (
+        <View className='report-page'>
+          {/* Header */}
+          <View className='header'>
+            <View className='header-content'>
+              <View className='header-left'>
+                <AtIcon value='playlist' size='32' color='white' className='header-icon' />
+                <Text className='header-title'>自由练习报告</Text>
+              </View>
+              <View className='header-right'>
+                <Text className='user-name'>{studentName}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 主内容区域 */}
+          <ScrollView className='content-area' scrollY>
+            {isLoading ? (
+              <View className='loading-container'>
+                <Text className='loading-text'>加载中...</Text>
+              </View>
+            ) : (
+              <>
+                {/* 练习信息卡片 */}
+                <View className='section'>
+                  <SafeAtCard className='info-card'>
+                    <View className='card-header'>
+                      <AtIcon value='bookmark' size='24' color='#667eea' />
+                      <Text className='card-title'>练习信息</Text>
+                    </View>
+                    <SafeAtDivider lineColor='#e5e5e5' />
+                    <View className='info-content'>
+                      <View className='info-row'>
+                        <Text className='info-label'>练习标题</Text>
+                        <Text className='info-value'>{exerciseTitle}</Text>
+                      </View>
+                      {exerciseDescription && (
+                        <View className='info-row'>
+                          <Text className='info-label'>练习描述</Text>
+                          <Text className='info-value description'>{exerciseDescription}</Text>
+                        </View>
+                      )}
+                      <View className='info-row'>
+                        <Text className='info-label'>录音数量</Text>
+                        <Text className='info-value highlight'>{audioList.length} 个</Text>
+                      </View>
+                    </View>
+                  </SafeAtCard>
+                </View>
+
+                {/* 录音列表 */}
+                {audioList.length > 0 && (
+                  <View className='section'>
+                    <SafeAtCard className='audio-card'>
+                      <View className='card-header'>
+                        <AtIcon value='sound' size='24' color='#667eea' />
+                        <Text className='card-title'>录音列表</Text>
+                      </View>
+                      <SafeAtDivider lineColor='#e5e5e5' />
+                      <View className='audio-list'>
+                        {audioList.map((audio, index) => {
+                          const displayDuration = Math.floor(Number(audio.duration) || 0)
+                          const isAudioExpanded = expandedAudioIds[audio.id] !== false
+                          const isEvaluationExpanded = expandedEvaluationIds[audio.id] !== false
+                          
+                          return (
+                            <View key={audio.id} className={`audio-item ${isAudioExpanded ? 'expanded' : 'collapsed'}`}>
+                              <View className='audio-header-row' onClick={() => this.toggleAudioItem(audio.id)}>
+                                <View className='audio-badge'>
+                                  <Text className='badge-text'>{index + 1}</Text>
+                                </View>
+                                <View
+                                  className={`voice-bubble ${this.state.playingAudioId === audio.id ? 'playing' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    this.handlePlayAudio(audio.id, audio.file)
+                                  }}
+                                >
+                                  <Text className='voice-duration'>{displayDuration}"</Text>
+                                  <View className='voice-icon-wrapper'>
+                                    {this.renderAudioIcon(audio.id)}
+                                  </View>
+                                </View>
+                                <AtIcon 
+                                  value={isAudioExpanded ? 'chevron-up' : 'chevron-down'} 
+                                  size='20' 
+                                  color='#667eea'
+                                  className='toggle-icon'
+                                />
+                              </View>
+                              <View className={`audio-collapsible-content ${isAudioExpanded ? 'expanded' : 'collapsed'}`}>
+                                <View className='reference-text-section'>
+                                  <Text className='reference-label'>📝 参考文本</Text>
+                                  {audio.refText ? (
+                                    <View className='message-bubble'>
+                                      <Text className='message-text'>{audio.refText}</Text>
+                                    </View>
+                                  ) : (
+                                    <View className='message-bubble message-bubble-empty'>
+                                      <Text className='message-text-empty'>暂无参考文本</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View className='evaluation-section'>
+                                  <View className='evaluation-header' onClick={(e) => this.toggleEvaluation(audio.id, e)}>
+                                    <Text className='evaluation-label'>🤖 AI分析总结</Text>
+                                    <AtIcon 
+                                      value={isEvaluationExpanded ? 'chevron-up' : 'chevron-down'} 
+                                      size='18' 
+                                      color='#52c41a'
+                                      className='evaluation-toggle-icon'
+                                    />
+                                  </View>
+                                  <View className={`evaluation-content ${isEvaluationExpanded ? 'expanded' : 'collapsed'}`}>
+                                    {audio.evaluation ? (
+                                      <View className='evaluation-box'>
+                                        <Text className='evaluation-text'>{audio.evaluation}</Text>
+                                      </View>
+                                    ) : (
+                                      <View className='evaluation-box evaluation-box-empty'>
+                                        <Text className='evaluation-text-empty'>AI分析生成中...</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                </View>
+                              </View>
+                            </View>
+                          )
+                        })}
+                      </View>
+                    </SafeAtCard>
+                  </View>
+                )}
+
+                {/* 学习建议 */}
+                {reportContent && (
+                  <View className='section'>
+                    <SafeAtCard className='summary-card'>
+                      <View className='card-header'>
+                        <AtIcon value='analytics' size='24' color='#667eea' />
+                        <Text className='card-title'>学习建议</Text>
+                      </View>
+                      <SafeAtDivider lineColor='#e5e5e5' />
+                      <View className='summary-content'>
+                        <Text className='summary-text'>{reportContent}</Text>
+                      </View>
+                    </SafeAtCard>
+                  </View>
+                )}
+              </>
+            )}
+          </ScrollView>
+
+          {/* 返回按钮 */}
+          <View className='back-btn' onClick={this.handleBack}>
+            <AtIcon value='chevron-left' size='20' color='white' />
+            <Text className='back-text'>返回</Text>
+          </View>
+        </View>
+      )
+    }
+
+    // 普通练习报告视图（单个练习）
     return (
       <View className='report-page'>
         {/* Header */}
@@ -511,11 +820,6 @@ export default class Report extends Component {
                         <View className='audio-badge'>
                           <Text className='badge-text'>{index + 1}</Text>
                         </View>
-                        
-                        {/* 音频时长标签 */}
-                        {/* <View className='audio-duration-label'>
-                          <Text className='duration-text'>⏱️ {displayDuration}秒</Text>
-                        </View> */}
                         
                         {/* 音频气泡 */}
                         <View
