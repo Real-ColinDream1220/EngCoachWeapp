@@ -385,9 +385,6 @@ export default class TeacherPage extends Component {
                                 >
                                   <AtIcon value='folder' size='20' color='#667eea' />
                                   <Text className='unit-title'>{unitGroup.unitName}</Text>
-                                  <Text className='unit-exercise-count'>
-                                    ({unitGroup.exercises.length} 个练习)
-                                  </Text>
                                 </View>
                                 <View className='unit-header-right'>
                                   <View 

@@ -116,11 +116,11 @@
   right: 0;
   z-index: 99;
   padding: 0 30px;
-  background: #f5f7fa; // 与对话框背景颜色一致
+  background: transparent; // 容器透明，card本身有白色背景
   max-height: 0;
   overflow: hidden;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: none; // 移除容器的阴影，card本身有阴影
   
   &.expanded {
     max-height: 400px;
@@ -196,7 +196,7 @@
   
   .messages-container {
     height: 100%;
-    padding: 0 30px 20px 30px;
+    padding: 40px 30px 20px 30px; // 顶部padding增加到40px，让AI首条消息看起来更舒服
     overflow-y: auto;
     overflow-x: hidden; // 防止横向滚动
     background: transparent; // 确保容器透明，使用wrapper的背景色
@@ -1242,10 +1242,10 @@
   left: 0;
   right: 0;
   z-index: 99;
-  background: white;
+  background: transparent; // 容器透明，card本身有白色背景
   transition: max-height 0.3s ease;
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: none; // 移除容器的阴影，card本身有阴影
   
   &.expanded {
     max-height: 500px;

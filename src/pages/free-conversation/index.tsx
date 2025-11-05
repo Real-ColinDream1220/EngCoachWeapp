@@ -1,38 +1,40 @@
 import { Component } from 'react'
-import { View, Text, Video } from '@tarojs/components'
-import { AtButton, AtIcon } from 'taro-ui'
+import { View, Text, Image } from '@tarojs/components'
+import { AtButton, AtCard, AtIcon, AtActivityIndicator } from 'taro-ui'
+
+// Safety check for taro-ui components
+const SafeAtButton = AtButton || (() => <View>Button not available</View>)
+const SafeAtCard = AtCard || (() => <View>Card not available</View>)
+const SafeAtIcon = AtIcon || (() => <View>Icon not available</View>)
+const SafeAtActivityIndicator = AtActivityIndicator || (() => <View>Loading...</View>)
+
 import Taro from '@tarojs/taro'
 import './index.scss'
 import { aiChatAPI } from '../../utils/api_v2/aiChat'
 import { TaroVoiceRecognitionService } from '../../utils/voiceRecognition/TaroVoiceRecognitionService'
 import { contentAPI } from '../../utils/api_v2/content'
 
-// Safety check for taro-ui components
-const SafeAtButton = AtButton || (() => <View>Button not available</View>)
-
 export default class FreeConversation extends Component {
   state = {
     isRecording: false,
     isStreaming: false,
-    streamingText: '',
-    streamingMessageId: null as number | null,
+    streamingText: '', // 当前流式输出的文本
+    currentAIText: '', // 当前AI回复的文本（用于中间文字框显示）
     recordingStartTime: 0,
-    playingVoiceId: null as number | null,
-    voiceIconIndex: 0,
     tid: null as number | null,
-    messages: [] as any[],
-    recordedMessages: {} as Record<number, any>,
+    recordedMessages: {} as Record<number, any>, // 已录音的消息记录（不显示，仅用于评测）
     studentName: '学生',
-    scrollIntoViewId: '' as string,
-    // 视频相关
-    currentVideoUrl: 'https://t.aix101.com/udata/100728/mp4/40c275f8085c7dfb3cc5802d3caf1f0e_20251105145241.mp4'
+    isLoadingConversation: false // 是否正在加载对话
   }
 
-  voiceAnimationTimer: any = null
   audioContext: any = null
   voiceRecognitionService: TaroVoiceRecognitionService | null = null
   recognizedText: string = ''
-  videoContext: any = null
+  audio2TextPromiseResolve: ((text: string) => void) | null = null
+  audio2TextPromiseReject: ((error: Error) => void) | null = null
+
+  // 头像URL
+  avatarUrl = 'https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
 
   componentDidMount() {
     // 检查登录状态
@@ -50,107 +52,124 @@ export default class FreeConversation extends Component {
       this.setState({ studentName: studentInfo.name })
     }
     
-    // 初始化音频播放器
+    // 初始化录音管理器
     this.audioContext = Taro.createInnerAudioContext()
     
-    // 延迟初始化视频播放器，确保DOM已渲染
-    setTimeout(() => {
-      try {
-        // 初始化视频播放器
-        this.videoContext = Taro.createVideoContext('free-conversation-video')
-        console.log('视频播放器初始化完成')
-        
-        // 自动播放默认视频
-        this.playVideo(this.state.currentVideoUrl)
-      } catch (error) {
-        console.error('视频播放器初始化失败:', error)
-      }
-    }, 500)
+    // 加载并启动对话（使用unit_id=1）
+    this.startConversation()
   }
 
   componentWillUnmount() {
     // 清理资源
     if (this.voiceRecognitionService) {
-      this.voiceRecognitionService.destroy().catch(() => {})
+      try {
+        this.voiceRecognitionService.destroy()
+      } catch (e) {
+        // 忽略错误
+      }
     }
     if (this.audioContext) {
       this.audioContext.destroy()
     }
-    if (this.voiceAnimationTimer) {
-      clearInterval(this.voiceAnimationTimer)
-    }
   }
 
   /**
-   * 播放视频
+   * 启动对话：获取unit_id=1的所有exercises的vocabs，拼接后发送给智能体
    */
-  playVideo = (url: string) => {
-    console.log('准备播放视频:', url)
-    console.log('当前视频URL:', this.state.currentVideoUrl)
+  startConversation = async () => {
+    this.setState({ isLoadingConversation: true, currentAIText: '' })
     
-    // 如果URL相同，直接播放
-    if (url === this.state.currentVideoUrl && this.videoContext) {
-      console.log('URL相同，直接播放')
-      try {
-        this.videoContext.play()
-      } catch (error) {
-        console.error('直接播放失败:', error)
+    try {
+      // 1. 使用unit_id=1获取所有exercises
+      const { exerciseAPI } = await import('../../utils/api_v2')
+      const exercisesResponse = await exerciseAPI.getExerciseList(1)
+      const exercises = exercisesResponse.data || exercisesResponse.result
+      
+      if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
+        throw new Error('该单元没有练习')
       }
-      return
-    }
-    
-    // 更新URL
-    this.setState({ currentVideoUrl: url }, () => {
-      // 使用nextTick确保状态更新和DOM渲染完成
-      Taro.nextTick(() => {
-        if (this.videoContext) {
-          // 延迟一下，确保视频组件已更新
-          setTimeout(() => {
-            try {
-              console.log('调用视频播放API')
-              this.videoContext.play()
-            } catch (error) {
-              console.error('视频播放失败:', error)
-              // 如果直接调用失败，延迟重试
-              setTimeout(() => {
-                if (this.videoContext) {
-                  try {
-                    console.log('重试播放视频')
-                    this.videoContext.play()
-                  } catch (e) {
-                    console.error('视频播放重试失败:', e)
-                  }
-                }
-              }, 500)
-            }
-          }, 200)
-        } else {
-          // 如果videoContext还没初始化，重新初始化
-          console.log('videoContext未初始化，重新初始化...')
-          setTimeout(() => {
-            try {
-              this.videoContext = Taro.createVideoContext('free-conversation-video')
-              if (this.videoContext) {
-                console.log('videoContext重新初始化成功，尝试播放')
-                setTimeout(() => {
-                  try {
-                    this.videoContext.play()
-                  } catch (e) {
-                    console.error('播放失败:', e)
-                  }
-                }, 200)
-              }
-            } catch (error) {
-              console.error('重新初始化视频播放器失败:', error)
-            }
-          }, 300)
+
+      // 2. 收集所有exercises的vocabs
+      const allVocabs: string[] = []
+      for (const exercise of exercises) {
+        if (exercise.vocabs && Array.isArray(exercise.vocabs)) {
+          allVocabs.push(...exercise.vocabs)
+        }
+      }
+
+      // 去重
+      const uniqueVocabs = Array.from(new Set(allVocabs))
+
+      if (uniqueVocabs.length === 0) {
+        throw new Error('该单元所有练习都没有vocabs')
+      }
+
+      console.log('收集到的vocabs:', uniqueVocabs)
+      console.log('vocabs数量:', uniqueVocabs.length)
+
+      // 3. 获取新tid
+      const topicResponse = await aiChatAPI.topicEdit()
+      const tid = (topicResponse && typeof topicResponse.data === 'object' && 'id' in topicResponse.data) 
+        ? topicResponse.data.id 
+        : undefined
+      
+      if (!tid) throw new Error('未能获取到tid')
+      
+      this.setState({ tid })
+
+      // 4. vocabs拼接后，调用completions接口，agentId=5864
+      // 将所有vocabs拼接成一个字符串
+      const vocabsText = uniqueVocabs.join(', ')
+      console.log('拼接后的vocabs文本:', vocabsText)
+      
+      let fullResponse = ''
+      
+      // 开始流式输出
+      this.setState({ 
+        isStreaming: true,
+        currentAIText: '',
+        streamingText: ''
+      })
+      
+      await aiChatAPI.completions({
+        tid,
+        text: vocabsText, // 直接使用拼接后的文本
+        agent_id: 5864,
+        onMessage: (chunk: string) => {
+          fullResponse += chunk
+          // 实时更新中间文字框的内容
+          this.setState({
+            isStreaming: true,
+            streamingText: fullResponse,
+            currentAIText: fullResponse
+          })
+        },
+        onComplete: () => {
+          // 流式输出完成
+          this.setState({
+            isStreaming: false,
+            streamingText: '',
+            currentAIText: fullResponse
+          })
+        },
+        onError: (err: any) => {
+          this.setState({
+            isStreaming: false,
+            streamingText: '',
+            currentAIText: ''
+          })
+          Taro.showToast({ title: 'AI对话出错', icon: 'none' })
         }
       })
-    })
+    } catch (e: any) {
+      this.setState({ isLoadingConversation: false })
+      Taro.showToast({ title: e.message || '对话初始化失败', icon: 'none' })
+    }
+    this.setState({ isLoadingConversation: false })
   }
 
   /**
-   * 初始化语音识别服务
+   * 初始化语音识别服务（使用后端API）
    */
   initVoiceRecognitionService = async () => {
     try {
@@ -159,9 +178,24 @@ export default class FreeConversation extends Component {
         {
           onResult: (text: string, isFinal: boolean) => {
             this.recognizedText = text
+            // 如果是最终结果，调用resolve
+            if (isFinal && this.audio2TextPromiseResolve) {
+              console.log('✅ audio2text识别完成，触发resolve:', text)
+              this.audio2TextPromiseResolve(text)
+              this.audio2TextPromiseResolve = null
+              this.audio2TextPromiseReject = null
+            }
           },
           onError: (error: string) => {
-            Taro.showToast({ title: error, icon: 'none' })
+            // 如果识别失败，调用reject
+            if (this.audio2TextPromiseReject) {
+              console.error('❌ audio2text识别失败，触发reject:', error)
+              this.audio2TextPromiseReject(new Error(error))
+              this.audio2TextPromiseResolve = null
+              this.audio2TextPromiseReject = null
+            } else {
+              Taro.showToast({ title: error, icon: 'none' })
+            }
           },
           onStarted: () => {
             this.recognizedText = ''
@@ -178,7 +212,7 @@ export default class FreeConversation extends Component {
   }
 
   /**
-   * 开始录音
+   * 开始录音（启动语音识别）
    */
   handleStartRecording = async () => {
     // 如果服务存在但正在识别，先停止并销毁
@@ -191,7 +225,6 @@ export default class FreeConversation extends Component {
       await new Promise(resolve => setTimeout(resolve, 200))
     }
     
-    // 重新初始化服务
     await this.initVoiceRecognitionService()
 
     if (!this.voiceRecognitionService) {
@@ -205,7 +238,6 @@ export default class FreeConversation extends Component {
       recordingStartTime: startTime
     })
 
-    // 启动录音
     try {
       await this.voiceRecognitionService.start()
     } catch (error: any) {
@@ -215,7 +247,7 @@ export default class FreeConversation extends Component {
   }
 
   /**
-   * 停止录音
+   * 停止录音（录音停止后会自动调用API进行识别）
    */
   handleStopRecording = async () => {
     const { recordingStartTime, tid } = this.state
@@ -225,19 +257,46 @@ export default class FreeConversation extends Component {
     this.setState({ isRecording: false })
 
     if (this.voiceRecognitionService) {
+      this.recognizedText = ''
+      
+      // 创建Promise等待audio2text结果
+      const audio2TextPromise = new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('audio2text识别超时'))
+        }, 30000) // 30秒超时
+        
+        this.audio2TextPromiseResolve = (text: string) => {
+          clearTimeout(timeout)
+          resolve(text)
+        }
+        this.audio2TextPromiseReject = (error: Error) => {
+          clearTimeout(timeout)
+          reject(error)
+        }
+      })
+      
+      // 停止录音（会触发onStop回调，在回调中调用audio2text API）
       await this.voiceRecognitionService.stop()
       
-      // 等待识别API调用完成
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 等待audio2text识别完成
+      console.log('⏳ 等待audio2text识别完成...')
+      let audio2TextResult = ''
       
-      // 获取最终识别文本和WAV文件路径
-      const serviceText = this.voiceRecognitionService.getCurrentText()
-      const callbackText = this.recognizedText
-      const recognizedText = serviceText || callbackText || ''
+      try {
+        audio2TextResult = await audio2TextPromise
+        console.log('✅ audio2text识别完成，识别文本:', audio2TextResult)
+      } catch (error: any) {
+        console.error('❌ audio2text识别失败:', error)
+        Taro.showToast({
+          title: error.message || '语音识别失败，请重试',
+          icon: 'none',
+          duration: 2000
+        })
+        return // 识别失败，不继续后续流程
+      }
+      
+      const recognizedText = audio2TextResult
       const pcmFilePath = this.voiceRecognitionService.getPcmFilePath()
-
-      // 保存录音信息
-      const messageId = Date.now()
       const rawText = recognizedText ? recognizedText.trim() : ''
       
       // 先调用 content_generate 接口处理识别文本
@@ -255,8 +314,8 @@ export default class FreeConversation extends Component {
           // 检查是否有 task_id（异步任务）
           const taskId = contentResult.data?.task_id || contentResult.result?.task_id
           if (taskId) {
-            // 异步任务，需要轮询监听
-            console.log('⏳ content_generate 是异步任务，开始轮询...')
+            // 异步任务，等待结果
+            console.log('⏳ content_generate 是异步任务，等待结果...')
             const pollResult = await contentAPI.pollUntilComplete(taskId)
             if (pollResult.success && pollResult.content) {
               processedRefText = pollResult.content.trim()
@@ -291,12 +350,14 @@ export default class FreeConversation extends Component {
       // 使用处理后的文本作为 ref_text
       const recordData = {
         pcmFilePath: pcmFilePath || '',
-        ref_text: processedRefText,
+        ref_text: processedRefText, // 使用 content_generate 处理后的文本作为 ref_text
         duration: duration,
         timestamp: Date.now()
       }
 
-      // 保存录音信息
+      const messageId = Date.now()
+      
+      // 保存录音信息（不显示，仅用于评测）
       this.setState((prev: any) => ({
         recordedMessages: {
           ...prev.recordedMessages,
@@ -304,22 +365,7 @@ export default class FreeConversation extends Component {
         }
       }))
 
-      // 添加用户消息
-      const userMessage = {
-        id: messageId,
-        text: '',
-        isUser: true,
-        timestamp: Date.now()
-      }
-
-      this.setState((prev: any) => ({
-        messages: [...prev.messages, userMessage]
-      }))
-
-      // 滚动到最新消息
-      this.scrollToLatestMessage()
-
-      // 发送给智能体
+      // 发送给智能体（agentId=5864）
       console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
       await this.sendUserMessageToAI(textToSend, tid || null)
     }
@@ -345,82 +391,46 @@ export default class FreeConversation extends Component {
       const trimmedText = (userText || '').trim()
       
       let fullResponse = ''
-      const streamingMessageId = Date.now()
-      const aiMessageId = streamingMessageId + 1
-
-      // 先添加AI消息占位符
-      this.setState((prev: any) => ({
-        messages: [...prev.messages, {
-          id: aiMessageId,
-          text: '',
-          isUser: false,
-          timestamp: Date.now(),
-          isStreaming: true
-        }],
-        streamingMessageId: aiMessageId
-      }))
-
-      this.scrollToLatestMessage()
+      
+      // 清空之前的回复，开始新的流式输出
+      this.setState({
+        isStreaming: true,
+        currentAIText: '',
+        streamingText: ''
+      })
 
       await aiChatAPI.completions({
         tid,
         text: trimmedText,
-        agent_id: 5778,
+        agent_id: 5864,
         onMessage: (chunk: string) => {
           fullResponse += chunk
-          this.setState((prev: any) => {
-            const updatedMessages = prev.messages.map((msg: any) => 
-              msg.id === aiMessageId 
-                ? { ...msg, text: fullResponse, isStreaming: true }
-                : msg
-            )
-            return {
-              isStreaming: true,
-              streamingText: fullResponse,
-              messages: updatedMessages
-            }
-          }, () => {
-            this.scrollToLatestMessage()
+          // 实时更新中间文字框的内容
+          this.setState({
+            isStreaming: true,
+            streamingText: fullResponse,
+            currentAIText: fullResponse
           })
         },
         onComplete: () => {
-          this.setState((prev: any) => ({
+          // 流式输出完成
+          this.setState({
             isStreaming: false,
             streamingText: '',
-            streamingMessageId: null,
-            messages: prev.messages.map((msg: any) => 
-              msg.id === aiMessageId 
-                ? { ...msg, text: fullResponse, isStreaming: false }
-                : msg
-            )
-          }))
-          this.scrollToLatestMessage()
+            currentAIText: fullResponse
+          })
         },
         onError: (err: any) => {
-          this.setState((prev: any) => ({
-            isStreaming: false, 
+          this.setState({
+            isStreaming: false,
             streamingText: '',
-            streamingMessageId: null,
-            messages: prev.messages.filter((msg: any) => msg.id !== aiMessageId)
-          }))
+            currentAIText: ''
+          })
           Taro.showToast({ title: 'AI对话出错', icon: 'none' })
         }
       })
     } catch (error: any) {
       Taro.showToast({ title: error.message || '发送失败', icon: 'none' })
-    }
-  }
-
-  /**
-   * 滚动到最新消息
-   */
-  scrollToLatestMessage = () => {
-    const { messages } = this.state
-    if (messages.length > 0) {
-      const latestMessageId = messages[messages.length - 1].id
-      this.setState({
-        scrollIntoViewId: `message-${latestMessageId}`
-      })
     }
   }
 
@@ -437,140 +447,626 @@ export default class FreeConversation extends Component {
   }
 
   /**
-   * 播放语音消息
+   * 处理任务重试逻辑（最多重试3次）
    */
-  handlePlayVoice = (messageId: number) => {
-    const { playingVoiceId, recordedMessages } = this.state
+  retryTask = async <T,>(
+    taskFn: () => Promise<T>,
+    maxRetries: number = 3,
+    taskName: string = '任务'
+  ): Promise<{ success: boolean; data?: T; error?: string }> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await taskFn()
+        return { success: true, data: result }
+      } catch (error: any) {
+        if (attempt === maxRetries) {
+          return { success: false, error: error.message || '任务执行失败' }
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+    }
+    return { success: false, error: '未知错误' }
+  }
 
-    if (playingVoiceId === messageId) {
-      this.stopVoicePlayback()
+  /**
+   * 完成练习按钮处理逻辑
+   * 自由对话以单元为单位，使用speech_audio和speech_report表
+   * 使用unit_id=1
+   */
+  handleCompleteExercise = async () => {
+    const { recordedMessages } = this.state
+    const studentInfo = Taro.getStorageSync('studentInfo')
+    const studentId = studentInfo?.id
+
+    if (!studentId) {
+      Taro.showToast({ title: '请先登录', icon: 'none' })
       return
     }
 
-    if (playingVoiceId !== null) {
-      this.stopVoicePlayback()
+    const unitIdNum = 1 // 固定使用unit_id=1
+    const recordedCount = Object.keys(recordedMessages).length
+
+    if (recordedCount === 0) {
+      Taro.showToast({ title: '请至少完成一次录音', icon: 'none' })
+      return
     }
 
-    const recordedData = recordedMessages[messageId]
-    if (!recordedData) {
-      Taro.showToast({
-        title: '该消息未录音',
-        icon: 'none'
+    // 确认对话框
+    const confirmResult = await new Promise<boolean>((resolve) => {
+      Taro.showModal({
+        title: '确认完成',
+        content: `确定要完成练习吗？共 ${recordedCount} 条录音将被评测。`,
+        success: (res) => resolve(res.confirm),
+        fail: () => resolve(false)
       })
-      return
-    }
-
-    const audioPath = recordedData.pcmFilePath
-    if (!audioPath || audioPath.trim() === '') {
-      Taro.showToast({
-        title: '音频文件路径不存在',
-        icon: 'none'
-      })
-      return
-    }
-
-    this.setState({ 
-      playingVoiceId: messageId,
-      voiceIconIndex: 0
     })
 
-    this.startVoiceAnimation()
-
-    if (!this.audioContext) {
-      this.audioContext = Taro.createInnerAudioContext()
-    }
+    if (!confirmResult) return
 
     try {
+      Taro.showLoading({ title: '正在上传文件...', mask: true })
+
+      // 步骤0: 删除学生在该单元的所有旧数据（speech_audio和speech_report）
+      // 根据 unit_id 和 student_id 清除已有的 speech_audio 和 speech_report 数据
+      const { speechAudioAPI, speechReportAPI } = await import('../../utils/api_v2')
       try {
-        this.audioContext.stop()
-      } catch (e) {}
+        console.log('🗑️ 开始清除旧数据，unit_id:', unitIdNum, 'student_id:', studentId)
+        
+        // 获取该单元和学生的所有speech_audio
+        const audioListResult = await speechAudioAPI.getAudioList(unitIdNum, studentId)
+        console.log('📋 获取到的speech_audio列表:', audioListResult)
+        
+        // 处理不同的返回格式
+        let audios: any[] = []
+        if (Array.isArray(audioListResult.data)) {
+          audios = audioListResult.data
+        } else if (Array.isArray(audioListResult.result)) {
+          audios = audioListResult.result
+        } else if (audioListResult.data?.items && Array.isArray(audioListResult.data.items)) {
+          audios = audioListResult.data.items
+        } else if (audioListResult.result?.items && Array.isArray(audioListResult.result.items)) {
+          audios = audioListResult.result.items
+        }
+        
+        console.log(`📊 找到 ${audios.length} 个speech_audio记录需要删除`)
+        
+        // 删除所有音频
+        let deletedAudioCount = 0
+        for (const audio of audios) {
+          if (audio.id) {
+            try {
+              await speechAudioAPI.deleteAudio(audio.id)
+              deletedAudioCount++
+              console.log(`✅ 删除speech_audio成功，id: ${audio.id}`)
+            } catch (e) {
+              console.error(`❌ 删除speech_audio失败，id: ${audio.id}:`, e)
+            }
+          }
+        }
+        console.log(`✅ 成功删除 ${deletedAudioCount}/${audios.length} 个speech_audio记录`)
 
-      this.audioContext.offEnded()
-      this.audioContext.offError()
+        // 获取该单元和学生的所有speech_report
+        const reportListResult = await speechReportAPI.getReportList(unitIdNum, studentId)
+        console.log('📋 获取到的speech_report列表:', reportListResult)
+        
+        // 处理不同的返回格式
+        let reports: any[] = []
+        if (Array.isArray(reportListResult.data)) {
+          reports = reportListResult.data
+        } else if (Array.isArray(reportListResult.result)) {
+          reports = reportListResult.result
+        } else if (reportListResult.data?.items && Array.isArray(reportListResult.data.items)) {
+          reports = reportListResult.data.items
+        } else if (reportListResult.result?.items && Array.isArray(reportListResult.result.items)) {
+          reports = reportListResult.result.items
+        }
+        
+        console.log(`📊 找到 ${reports.length} 个speech_report记录需要删除`)
+        
+        // 删除所有报告
+        let deletedReportCount = 0
+        for (const report of reports) {
+          if (report.id) {
+            try {
+              await speechReportAPI.deleteReport(report.id)
+              deletedReportCount++
+              console.log(`✅ 删除speech_report成功，id: ${report.id}`)
+            } catch (e) {
+              console.error(`❌ 删除speech_report失败，id: ${report.id}:`, e)
+            }
+          }
+        }
+        console.log(`✅ 成功删除 ${deletedReportCount}/${reports.length} 个speech_report记录`)
+        
+        console.log('✅ 旧数据清除完成')
+      } catch (deleteError) {
+        console.error('❌ 清除旧数据失败:', deleteError)
+        console.warn('⚠️ 忽略删除错误，继续执行')
+      }
 
-      this.audioContext.src = audioPath
-      
-      this.audioContext.onEnded(() => {
-        this.stopVoicePlayback()
+      // 步骤1: 上传所有录音文件并创建speech_audio记录（同步，evaluation为空）
+      const { fileAPI } = await import('../../utils/api_v2')
+      const uploadResults: any[] = []
+
+      for (const [messageId, recordDataRaw] of Object.entries(recordedMessages)) {
+        try {
+          const recordData = recordDataRaw as any
+          const retryResult = await this.retryTask(
+            async () => {
+              // 上传文件
+              const uploadResult = await fileAPI.uploadFile(recordData.pcmFilePath)
+              if (!uploadResult.success) {
+                throw new Error('文件上传失败')
+              }
+
+              const fileUrl = uploadResult.data?.file?.url || uploadResult.result?.file?.url
+              if (!fileUrl) {
+                throw new Error('文件URL为空')
+              }
+
+              // 创建speech_audio记录（evaluation为空）
+              // 确保必填字段不为空且类型正确
+              if (!studentId || studentId === 0) {
+                throw new Error('student_id不能为0')
+              }
+              if (!fileUrl || fileUrl.trim() === '') {
+                throw new Error('file不能为空')
+              }
+              // unitIdNum 固定为 1，无需检查
+
+              const audioData: any = {
+                unit_id: Number(unitIdNum),  // 确保是数字类型
+                student_id: Number(studentId),  // 确保是数字类型
+                file: String(fileUrl).trim()  // 确保是字符串且不为空
+              }
+
+              // 可选字段：只在有值时才添加
+              if (recordData.duration !== undefined && recordData.duration !== null) {
+                audioData.duration = Math.floor(Number(recordData.duration))  // 确保是整数
+              }
+              if (recordData.ref_text !== undefined && recordData.ref_text !== null && recordData.ref_text.trim() !== '') {
+                audioData.ref_text = String(recordData.ref_text).trim()
+              }
+              if (recordData.evaluation !== undefined && recordData.evaluation !== null && recordData.evaluation.trim() !== '') {
+                audioData.evaluation = String(recordData.evaluation).trim()
+              } else {
+                audioData.evaluation = ''  // 默认空字符串
+              }
+
+              console.log('📤 准备创建speech_audio记录:', {
+                unit_id: audioData.unit_id,
+                student_id: audioData.student_id,
+                file: audioData.file,
+                duration: audioData.duration,
+                ref_text: audioData.ref_text,
+                evaluation: audioData.evaluation
+              })
+
+              const saveResult = await speechAudioAPI.editAudio(audioData)
+              console.log('📥 speech_audio创建响应:', saveResult)
+              
+              if (!saveResult.success) {
+                console.error('❌ speech_audio创建失败:', {
+                  success: saveResult.success,
+                  message: saveResult.message,
+                  data: saveResult.data,
+                  result: saveResult.result
+                })
+                throw new Error(`保存音频记录失败: ${saveResult.message || '未知错误'}`)
+              }
+
+              const audioId = saveResult.data?.id || saveResult.result?.id
+              return { fileUrl, audioId, messageId }
+            },
+            3,
+            `上传录音 ${messageId}`
+          )
+
+          if (retryResult.success && retryResult.data) {
+            uploadResults.push({
+              ...retryResult.data,
+              recordData
+            })
+          }
+        } catch (error) {
+          console.error(`上传录音 ${messageId} 失败:`, error)
+        }
+      }
+
+      Taro.hideLoading()
+
+      if (uploadResults.length === 0) {
+        throw new Error('没有成功上传的录音文件')
+      }
+
+      // 步骤2: 创建speech_report记录（同步，content为空）
+      const audioIds = uploadResults.map(r => r.audioId)
+
+      const reportData = {
+        unit_id: unitIdNum,
+        student_id: studentId,
+        audio_ids: audioIds,
+        content: '' // 暂时为空，后台异步评测后更新
+      }
+
+      const reportResult = await speechReportAPI.editReport(reportData)
+      if (!reportResult.success) {
+        throw new Error('创建报告失败')
+      }
+
+      const reportId = reportResult.data?.id || reportResult.result?.id
+
+      // 保存reportId和unitId到本地，用于后台评测
+      Taro.setStorageSync('currentSpeechReportId', reportId)
+      Taro.setStorageSync('currentUnitId', unitIdNum)
+
+      // 步骤3: 后台异步开始评测
+      console.log('🚀 准备启动后台评测任务...')
+      console.log('参数检查:', {
+        studentId,
+        unitId: unitIdNum,
+        uploadResultsCount: uploadResults.length,
+        reportId
       })
-
-      this.audioContext.onError((error: any) => {
-        this.stopVoicePlayback()
-        Taro.showToast({
-          title: '播放失败: ' + (error.errMsg || '未知错误'),
-          icon: 'none',
-          duration: 2000
-        })
-      })
       
-      this.audioContext.play()
-    } catch (error: any) {
-      this.stopVoicePlayback()
+      // 立即启动后台评测任务（不等待，异步执行）
+      if (unitIdNum && reportId && uploadResults.length > 0) {
+        setTimeout(() => {
+          console.log('🚀 开始执行后台评测任务...')
+          this.startBackgroundEvaluation(studentId, unitIdNum, uploadResults, reportId, reportData)
+            .catch((error) => {
+              console.error('❌ 后台评测任务启动失败:', error)
+            })
+        }, 100)
+      }
+
+      // 显示上传成功提示
       Taro.showToast({
-        title: '播放异常: ' + (error.errMsg || error.message || '未知错误'),
-        icon: 'none',
+        title: '上传成功，评测进行中...',
+        icon: 'success',
         duration: 2000
       })
+
+    } catch (error: any) {
+      Taro.hideLoading()
+      Taro.showToast({
+        title: error.message || '上传失败',
+        icon: 'none',
+        duration: 3000
+      })
     }
   }
 
   /**
-   * 启动语音播放动画
+   * 后台异步评测函数
+   * 处理SOE评测、generate评价、更新数据库
+   * 评测流程：
+   * 1. 每个音频文件 + 识别文字 → SOE接口评测
+   * 2. SOE返回的JSON数据 → generate接口(agentId=5844)处理 → content字段为总结内容 → 存入speech_audios.evaluation
+   * 3. 所有音频的总结 → generate接口(agentId=5863) → 整体总结 → 存入speech_report.content
    */
-  startVoiceAnimation = () => {
-    if (this.voiceAnimationTimer) {
-      clearInterval(this.voiceAnimationTimer)
-    }
-
-    this.voiceAnimationTimer = setInterval(() => {
-      this.setState((prev: any) => ({
-        voiceIconIndex: (prev.voiceIconIndex + 1) % 3
-      }))
-    }, 80)
-  }
-
-  /**
-   * 停止语音播放
-   */
-  stopVoicePlayback = () => {
-    if (this.audioContext) {
-      try {
-        this.audioContext.stop()
-      } catch (e) {}
-    }
-
-    if (this.voiceAnimationTimer) {
-      clearInterval(this.voiceAnimationTimer)
-      this.voiceAnimationTimer = null
-    }
-
-    this.setState({
-      playingVoiceId: null,
-      voiceIconIndex: 0
+  startBackgroundEvaluation = async (
+    studentId: number,
+    unitId: number,
+    uploadResults: any[],
+    reportId: number,
+    reportData: any
+  ) => {
+    console.log('🚀 后台异步评测开始...')
+    console.log(`📊 共 ${uploadResults.length} 个音频需要评测`)
+    console.log('参数详情:', {
+      studentId,
+      unitId,
+      reportId,
+      uploadResultsCount: uploadResults.length
     })
-  }
 
-  /**
-   * 渲染语音图标
-   */
-  renderVoiceIcon = (messageId: number) => {
-    const { playingVoiceId, voiceIconIndex } = this.state
+    try {
+      const { soeAPI, contentAPI, speechAudioAPI, speechReportAPI } = await import('../../utils/api_v2')
+      console.log('✅ API模块加载成功')
+      const allSoeResults: any[] = []
+      const allEvaluations: string[] = []
+      let successCount = 0
+      let failCount = 0
 
-    if (playingVoiceId === messageId) {
-      const icons = ['volume-off', 'volume-minus', 'volume-plus']
-      return <AtIcon value={icons[voiceIconIndex]} size='24' color='white' />
+      // 对每个音频进行评测
+      for (let i = 0; i < uploadResults.length; i++) {
+        const uploadResult = uploadResults[i]
+        console.log(`\n📝 ========== 开始评测音频 ${i + 1}/${uploadResults.length} ==========`)
+        console.log('音频详情:', {
+          audioId: uploadResult.audioId,
+          fileUrl: uploadResult.fileUrl,
+          localFilePath: uploadResult.recordData?.pcmFilePath,
+          refText: uploadResult.recordData?.ref_text
+        })
+
+        try {
+          // 获取本地缓存的音频文件路径和识别文字
+          const localFilePath = uploadResult.recordData?.pcmFilePath
+          const refText = uploadResult.recordData?.ref_text
+
+          if (!localFilePath) {
+            throw new Error('本地音频文件路径不存在')
+          }
+
+          if (!refText) {
+            throw new Error('识别文字不存在')
+          }
+
+          console.log(`✅ 使用本地缓存的音频文件: ${localFilePath}`)
+          console.log(`✅ 使用识别文字作为ref_text: ${refText}`)
+
+          // 步骤1: SOE评测（使用本地音频文件 + ref_text）
+          console.log(`🔍 步骤1: 开始SOE评测 ${i + 1}...`)
+          console.log('SOE评测参数:', {
+            audioFile: localFilePath,
+            refText: refText
+          })
+          
+          const soeResult = await this.retryTask(
+            async () => {
+              console.log(`🔄 调用SOE接口，参数: audioFile=${localFilePath}, refText=${refText}`)
+              // SOE接口：音频文件放在form-data的file里面，ref_text作为form-data参数
+              const result = await soeAPI.evaluate([localFilePath], [refText])
+              console.log('SOE接口返回结果:', result)
+              if (!result.success) {
+                throw new Error('SOE评测失败')
+              }
+              // SOE返回的是数组，取第一个元素
+              const soeData = Array.isArray(result.data) ? result.data[0] : result.data
+              console.log('SOE评测数据:', soeData)
+              return soeData
+            },
+            3,
+            `SOE评测 ${i + 1}`
+          )
+
+          if (!soeResult.success || !soeResult.data) {
+            throw new Error(`SOE评测失败: ${soeResult.error || '未知错误'}`)
+          }
+
+          allSoeResults.push(soeResult.data)
+          console.log(`✅ SOE评测完成 (audioId: ${uploadResult.audioId})`)
+
+          // 步骤2: generate(agent_id=5844) → 处理SOE JSON → 获取content
+          console.log(`🤖 步骤2: 调用generate接口(agentId=5844)处理SOE JSON...`)
+          const evaluationResult = await this.retryTask(
+            async () => {
+              const soeJsonQuery = JSON.stringify(soeResult.data)
+              console.log(`📤 发送SOE JSON数据到generate接口(agentId=5844)，数据长度: ${soeJsonQuery.length}`)
+              
+              const contentResult = await contentAPI.generate(5844, soeJsonQuery)
+              console.log('generate接口(5844)返回结果:', contentResult)
+
+              if (!contentResult.success) {
+                throw new Error('生成评价请求失败')
+              }
+
+              // 检查是否有task_id（异步任务）
+              const taskId = contentResult.data?.task_id || contentResult.result?.task_id
+              if (taskId) {
+                // 异步任务，需要轮询监听
+                console.log(`⏳ 检测到异步任务(taskId=${taskId})，开始轮询...`)
+                const pollResult = await contentAPI.pollUntilComplete(taskId)
+                if (!pollResult.success) {
+                  throw new Error(`评价生成任务失败: ${pollResult.error || '未知错误'}`)
+                }
+                console.log(`✅ 异步任务完成，获取到评价内容，长度: ${pollResult.content.length}`)
+                return pollResult.content
+              } else {
+                // 同步任务，直接返回content
+                const content = contentResult.data?.content || contentResult.result?.content || ''
+                console.log(`✅ 同步任务完成，获取到评价内容，长度: ${content.length}`)
+                return content
+              }
+            },
+            3,
+            `生成评价 ${i + 1}`
+          )
+
+          if (!evaluationResult.success || !evaluationResult.data) {
+            throw new Error(`生成评价失败: ${evaluationResult.error || '未知错误'}`)
+          }
+
+          const evaluation = evaluationResult.data
+          console.log(`✅ 评价生成完成 (audioId: ${uploadResult.audioId})，评价长度: ${evaluation.length}`)
+
+          // 步骤3: 更新speech_audio记录的evaluation字段 = content
+          console.log(`💾 步骤3: 更新speech_audio记录的evaluation字段...`)
+          await this.retryTask(
+            async () => {
+              // 确保必填字段不为空且类型正确
+              if (!uploadResult.audioId || uploadResult.audioId <= 0) {
+                throw new Error('audioId无效')
+              }
+              if (!unitId || unitId === 0) {
+                throw new Error('unit_id不能为0')
+              }
+              if (!studentId || studentId === 0) {
+                throw new Error('student_id不能为0')
+              }
+              if (!uploadResult.fileUrl || uploadResult.fileUrl.trim() === '') {
+                throw new Error('file不能为空')
+              }
+
+              const updateData: any = {
+                id: Number(uploadResult.audioId),  // 编辑时必填，且>0
+                unit_id: Number(unitId),  // 确保是数字类型
+                student_id: Number(studentId),  // 确保是数字类型
+                file: String(uploadResult.fileUrl).trim()  // 确保是字符串且不为空
+              }
+
+              // 可选字段：只在有值时才添加
+              if (uploadResult.recordData.ref_text !== undefined && uploadResult.recordData.ref_text !== null && uploadResult.recordData.ref_text.trim() !== '') {
+                updateData.ref_text = String(uploadResult.recordData.ref_text).trim()
+              }
+              if (evaluation !== undefined && evaluation !== null && evaluation.trim() !== '') {
+                updateData.evaluation = String(evaluation).trim()
+              } else {
+                updateData.evaluation = ''  // 默认空字符串
+              }
+              if (uploadResult.recordData.duration !== undefined && uploadResult.recordData.duration !== null) {
+                updateData.duration = Math.floor(Number(uploadResult.recordData.duration))  // 确保是整数
+              }
+
+              console.log(`📤 更新speech_audio记录，audioId: ${uploadResult.audioId}`)
+              console.log('📤 更新数据:', {
+                id: updateData.id,
+                unit_id: updateData.unit_id,
+                student_id: updateData.student_id,
+                file: updateData.file,
+                duration: updateData.duration,
+                ref_text: updateData.ref_text,
+                evaluation: updateData.evaluation
+              })
+
+              const updateResult = await speechAudioAPI.editAudio(updateData)
+              console.log('📥 speech_audio更新响应:', updateResult)
+              
+              if (!updateResult.success) {
+                console.error('❌ speech_audio更新失败:', {
+                  success: updateResult.success,
+                  message: updateResult.message,
+                  data: updateResult.data,
+                  result: updateResult.result
+                })
+                throw new Error(`更新音频记录失败: ${updateResult.message || '未知错误'}`)
+              }
+              console.log(`✅ speech_audio记录更新成功`)
+            },
+            3,
+            `更新评价 ${i + 1}`
+          )
+
+          allEvaluations.push(evaluation)
+          successCount++
+          console.log(`✅ 音频 ${i + 1} 评测完成 (audioId: ${uploadResult.audioId})`)
+
+        } catch (error: any) {
+          failCount++
+          console.error(`❌ 音频 ${i + 1} 评测失败:`, error)
+          console.error(`错误详情:`, error.message || error)
+        }
+      }
+
+      console.log(`\n📊 单个音频评测完成统计:`)
+      console.log(`  - 成功: ${successCount}/${uploadResults.length}`)
+      console.log(`  - 失败: ${failCount}/${uploadResults.length}`)
+
+      // 步骤4: 所有音频评测完成后，生成整体报告
+      if (allEvaluations.length > 0) {
+        console.log(`\n📊 ========== 开始生成整体报告 ==========`)
+        console.log(`共 ${allEvaluations.length} 个评价将用于生成整体报告`)
+
+        // generate(agent_id=5863) → 处理所有evaluation → 获取整体报告
+        console.log(`🤖 调用generate接口(agentId=5863)处理所有evaluation...`)
+        const overallResult = await this.retryTask(
+          async () => {
+            const combinedEvaluations = allEvaluations.join('\n\n')
+            console.log(`📤 发送所有evaluation到generate接口(agentId=5863)，数据长度: ${combinedEvaluations.length}`)
+            
+            const contentResult = await contentAPI.generate(5863, combinedEvaluations)
+            console.log('generate接口(5863)返回结果:', contentResult)
+
+            if (!contentResult.success) {
+              throw new Error('生成整体分析请求失败')
+            }
+
+            // 检查是否有task_id（异步任务）
+            const taskId = contentResult.data?.task_id || contentResult.result?.task_id
+            if (taskId) {
+              // 异步任务，需要轮询监听
+              console.log(`⏳ 检测到异步任务(taskId=${taskId})，开始轮询...`)
+              const pollResult = await contentAPI.pollUntilComplete(taskId)
+              if (!pollResult.success) {
+                throw new Error(`整体分析生成任务失败: ${pollResult.error || '未知错误'}`)
+              }
+              console.log(`✅ 异步任务完成，获取到整体报告内容，长度: ${pollResult.content.length}`)
+              return pollResult.content
+            } else {
+              // 同步任务，直接返回content
+              const content = contentResult.data?.content || contentResult.result?.content || ''
+              console.log(`✅ 同步任务完成，获取到整体报告内容，长度: ${content.length}`)
+              return content
+            }
+          },
+          3,
+          '生成整体分析'
+        )
+
+        if (overallResult.success && overallResult.data) {
+          // 步骤5: 更新speech_report记录的content字段
+          console.log(`💾 更新speech_report记录的content字段...`)
+          await this.retryTask(
+            async () => {
+              const updateData = {
+                id: reportId,
+                unit_id: unitId,
+                student_id: studentId,
+                audio_ids: uploadResults.map(r => r.audioId),
+                content: overallResult.data // 保存整体报告内容
+              }
+
+              console.log(`📤 更新speech_report记录，reportId: ${reportId}`)
+              const updateResult = await speechReportAPI.editReport(updateData)
+              if (!updateResult.success) {
+                throw new Error('更新报告失败')
+              }
+              console.log(`✅ speech_report记录更新成功`)
+            },
+            3,
+            '更新报告'
+          )
+
+          console.log('✅ 整体报告生成完成')
+        } else {
+          console.error(`❌ 整体报告生成失败:`, overallResult.error || '未知错误')
+        }
+      } else {
+        console.error(`❌ 没有成功的评价，无法生成整体报告`)
+      }
+
+      console.log('\n🎉 ========== 后台异步评测全部完成 ==========')
+      console.log(`📊 最终统计:`)
+      console.log(`  - 成功评测: ${successCount}/${uploadResults.length}`)
+      console.log(`  - 失败评测: ${failCount}/${uploadResults.length}`)
+      console.log(`  - 生成评价: ${allEvaluations.length}`)
+      console.log(`  - 整体报告: ${allEvaluations.length > 0 ? '已生成' : '未生成'}`)
+
+      // 提示用户评测完成
+      if (successCount > 0) {
+        Taro.showToast({
+          title: `评测完成：${successCount}/${uploadResults.length} 成功`,
+          icon: 'success',
+          duration: 3000
+        })
+      } else {
+        Taro.showToast({
+          title: '评测失败，请重试',
+          icon: 'none',
+          duration: 3000
+        })
+      }
+
+    } catch (error: any) {
+      console.error('❌ 后台异步评测失败:', error)
+      console.error('错误详情:', error.message || error)
+      Taro.showToast({
+        title: '评测失败: ' + (error.message || '未知错误'),
+        icon: 'none',
+        duration: 3000
+      })
     }
-
-    return <AtIcon value='volume-plus' size='24' color='white' />
   }
 
   render() {
     const { 
-      isRecording,
-      messages,
       studentName,
       isStreaming,
-      currentVideoUrl
+      currentAIText,
+      isRecording,
+      isLoadingConversation,
+      recordedMessages
     } = this.state
 
     return (
@@ -579,120 +1075,42 @@ export default class FreeConversation extends Component {
         <View className='header'>
           <View className='header-content'>
             <View className='header-left'>
-              <AtIcon value='message' size='32' color='white' />
+              <SafeAtIcon value='message' size='32' color='white' />
               <Text className='header-title'>自由对话</Text>
             </View>
             <View className='header-right'>
+              <SafeAtButton 
+                type='secondary' 
+                size='small'
+                onClick={this.handleCompleteExercise}
+                className='complete-exercise-btn'
+                disabled={Object.keys(recordedMessages).length === 0}
+              >
+                完成练习
+              </SafeAtButton>
               <Text className='user-name'>{studentName}</Text>
             </View>
           </View>
         </View>
 
-        {/* 视频容器 - 正中间 */}
-        <View className='video-container'>
-          <Video
-            id='free-conversation-video'
-            src={currentVideoUrl}
-            className='video-player'
-            controls={true}
-            autoplay={false}
-            loop={true}
-            muted={false}
-            show-center-play-btn={true}
-            show-fullscreen-btn={false}
-            show-play-btn={true}
-            enable-play-gesture={true}
-            onPlay={() => {
-              console.log('✅ 视频开始播放')
-            }}
-            onPause={() => {
-              console.log('⏸️ 视频暂停')
-            }}
-            onEnded={() => {
-              console.log('▶️ 视频播放结束')
-            }}
-            onError={(e: any) => {
-              console.error('❌ 视频播放错误:', e)
-              console.error('错误详情:', {
-                detail: e.detail,
-                errMsg: e.detail?.errMsg,
-                errCode: e.detail?.errCode,
-                message: e.detail?.message
-              })
-              // 显示更详细的错误信息
-              const errMsg = e.detail?.errMsg || e.detail?.message || '视频播放失败'
-              Taro.showToast({
-                title: `视频错误: ${errMsg}`,
-                icon: 'none',
-                duration: 3000
-              })
-            }}
-            onLoadedMetadata={() => {
-              console.log('✅ 视频元数据加载完成')
-              // 元数据加载完成后，尝试播放
-              if (this.videoContext) {
-                setTimeout(() => {
-                  try {
-                    console.log('尝试自动播放视频...')
-                    this.videoContext.play()
-                  } catch (error) {
-                    console.error('自动播放失败:', error)
-                  }
-                }, 300)
-              }
-            }}
-            onWaiting={() => {
-              console.log('⏳ 视频缓冲中...')
-            }}
-            onProgress={(e: any) => {
-              console.log('视频播放进度:', e.detail)
-            }}
+        {/* 头像（放大3倍，无card） */}
+        <View className='avatar-section'>
+          <Image 
+            src={this.avatarUrl}
+            className='avatar-image'
+            mode='aspectFit'
           />
         </View>
 
-        {/* 消息列表区域 */}
-        <View className='messages-container-wrapper'>
-          <View className='messages-container'>
-            {messages.map((message: any) => (
-              <View 
-                key={message.id}
-                id={`message-${message.id}`}
-                className={`message-wrapper ${message.isUser ? 'user-message-wrapper' : 'ai-message-wrapper'}`}
-              >
-                <View className={`message ${message.isUser ? 'user-message' : 'ai-message'}`}>
-                  <View className='message-content'>
-                    {message.isUser ? (
-                      // 用户消息：显示语音气泡
-                      (this.state as any).recordedMessages[message.id] ? (
-                        <View 
-                          className={`voice-bubble ${(this.state as any).playingVoiceId === message.id ? 'playing' : ''}`}
-                          onClick={() => this.handlePlayVoice(message.id)}
-                        >
-                          <Text className='voice-duration'>
-                            {((this.state as any).recordedMessages[message.id]?.duration || 0)}"
-                          </Text>
-                          <View className='voice-icon-wrapper'>
-                            {this.renderVoiceIcon(message.id)}
-                          </View>
-                        </View>
-                      ) : null
-                    ) : (
-                      // AI消息：显示文本
-                      message.text || message.isStreaming ? (
-                        <View className='message-bubble'>
-                          <Text className='message-text'>
-                            {message.text || ''}
-                            {message.isStreaming || (isStreaming && message.id === (this.state as any).streamingMessageId) ? (
-                              <Text className='streaming-dot' style={{ marginLeft: '8px', color: '#667eea' }}>●</Text>
-                            ) : null}
-                          </Text>
-                        </View>
-                      ) : null
-                    )}
-                  </View>
-                </View>
-              </View>
-            ))}
+        {/* 中间AI回复文字框 */}
+        <View className='ai-text-container'>
+          <View className='ai-text-box'>
+            <Text className='ai-text'>
+              {currentAIText || ''}
+              {isStreaming && (
+                <Text className='streaming-dot'>●</Text>
+              )}
+            </Text>
           </View>
         </View>
 
@@ -707,8 +1125,18 @@ export default class FreeConversation extends Component {
             {isRecording ? '停止录音' : '开始录音'}
           </SafeAtButton>
         </View>
+
+        {/* 加载遮罩层 */}
+        {isLoadingConversation && (
+          <View className='loading-overlay'>
+            <View className='loading-content'>
+              <Text className='loading-tip'>对话正在加载中...</Text>
+              <Text className='loading-subtitle'>请稍候，正在为您生成对话内容</Text>
+              <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
+            </View>
+          </View>
+        )}
       </View>
     )
   }
 }
-

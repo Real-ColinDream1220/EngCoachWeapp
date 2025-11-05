@@ -70,6 +70,7 @@ export default class ExerciseDetail extends Component {
     studentName: '学生', // 学生姓名
     reportStatus: 'unknown' as 'unknown' | 'generating' | 'completed' | 'empty', // report生成状态
     isPolling: false, // 是否正在轮询
+    hasAudio: false, // 是否有is_free=false的音频（用于控制"查看总结"按钮是否可用）
     // 悬浮按钮位置
     floatButtonX: 0, // 按钮X坐标
     floatButtonY: 0, // 按钮Y坐标
@@ -112,6 +113,17 @@ export default class ExerciseDetail extends Component {
     
     // 初始化悬浮按钮位置（默认在右下角）
     this.initFloatButtonPosition()
+
+    // 如果是从对话页面跳转过来的，检查音频和评测状态
+    const currentExerciseId = Taro.getStorageSync('currentExerciseId')
+    if (currentExerciseId && exerciseId && String(currentExerciseId) === String(exerciseId)) {
+      console.log('📥 从对话页面跳转过来，开始检查音频和评测状态...')
+      // 延迟检查，确保数据加载完成
+      setTimeout(() => {
+        this.checkHasAudio(Number(exerciseId))
+        this.checkReportStatus(Number(exerciseId))
+      }, 1000)
+    }
   }
   
   // 初始化悬浮按钮位置
@@ -224,9 +236,34 @@ export default class ExerciseDetail extends Component {
     if (this.hasMoved) {
       return
     }
-    console.log('悬浮按钮被点击，跳转到自由对话练习页面')
+    const { unitId } = this.state
+    console.log('悬浮按钮被点击，跳转到自由对话练习页面', { unitId })
     Taro.navigateTo({
-      url: '/pages/free-conversation/index'
+      url: `/pages/free-conversation/index?unitId=${unitId || ''}`
+    })
+  }
+
+  // 查看自由练习总结（与teacher页面逻辑一致）
+  handleViewFreeReport = () => {
+    const studentInfo = Taro.getStorageSync('studentInfo')
+    const studentId = studentInfo?.id
+    
+    if (!studentId) {
+      Taro.showToast({
+        title: '请先登录',
+        icon: 'none'
+      })
+      return
+    }
+    
+    // 使用unit_id=1（自由对话固定使用unit_id=1）
+    const unitId = 1
+    
+    console.log('查看自由练习报告:', { studentId, unitId })
+    
+    // 跳转到报告页面，传递 unitId 和 isFree=true 参数（与teacher页面逻辑一致）
+    Taro.navigateTo({
+      url: `/pages/report/index?unitId=${unitId}&studentId=${studentId}&isFree=true`
     })
   }
   
@@ -370,8 +407,10 @@ export default class ExerciseDetail extends Component {
         if (currentExercise) {
           this.loadFirstExerciseDetail(currentExercise.id)
           
-          // 检查该练习的report状态（是否已生成学习建议）
+          // 检查该练习是否有is_free=false的音频（用于控制"查看总结"按钮）
           if (currentExercise.isCompleted) {
+            this.checkHasAudio(currentExercise.id)
+            // 检查该练习的report状态（是否已生成学习建议）
             this.checkReportStatus(currentExercise.id)
           }
         }
@@ -419,20 +458,76 @@ export default class ExerciseDetail extends Component {
   }
 
   /**
-   * 检查report的content字段状态
-   * - 如果没有report：empty
-   * - 如果有report但content为空：generating
-   * - 如果有report且content有值：completed
+   * 检查是否有is_free=false的音频（用于控制"查看总结"按钮是否可用）
+   */
+  checkHasAudio = async (exerciseId: number) => {
+    try {
+      console.log('🔍 检查练习', exerciseId, '是否有is_free=false的音频...')
+      
+      const studentInfo = Taro.getStorageSync('studentInfo')
+      const studentId = studentInfo?.id
+      
+      if (!studentId) {
+        console.log('⚠️ 未获取到学生ID')
+        this.setState({ hasAudio: false })
+        return
+      }
+
+      // 检查audio列表（is_free=false）
+      const { audioAPI } = await import('../../utils/api_v2')
+      const audioListResult = await audioAPI.getAudioList({
+        student_id: studentId,
+        exercise_id: exerciseId
+      })
+
+      let audios: any[] = []
+      if (audioListResult.success) {
+        if (Array.isArray(audioListResult.data)) {
+          audios = audioListResult.data.filter((audio: any) => audio.is_free === false)
+        } else if (Array.isArray(audioListResult.result)) {
+          audios = audioListResult.result.filter((audio: any) => audio.is_free === false)
+        } else if (audioListResult.data?.audios) {
+          audios = audioListResult.data.audios.filter((audio: any) => audio.is_free === false)
+        } else if (audioListResult.result?.audios) {
+          audios = audioListResult.result.audios.filter((audio: any) => audio.is_free === false)
+        }
+      }
+
+      const hasAudio = audios.length > 0
+      console.log(`📊 音频检查结果: ${hasAudio ? '✅ 有音频' : '❌ 无音频'} (共 ${audios.length} 个is_free=false的音频)`)
+      
+      this.setState({ hasAudio })
+    } catch (error) {
+      console.error('检查音频失败:', error)
+      this.setState({ hasAudio: false })
+    }
+  }
+
+  /**
+   * 检查评测状态（report.content 和所有 audio.evaluation）
+   * - 如果没有report或audio：empty
+   * - 如果有report但content为空，或audio的evaluation有空值：generating
+   * - 如果有report且content有值，且所有audio的evaluation都有值：completed
    */
   checkReportStatus = async (exerciseId: number) => {
     try {
-      console.log('🔍 检查练习', exerciseId, '的report状态...')
+      console.log('🔍 检查练习', exerciseId, '的评测状态...')
       
+      const studentInfo = Taro.getStorageSync('studentInfo')
+      const studentId = studentInfo?.id
+      
+      if (!studentId) {
+        console.log('⚠️ 未获取到学生ID')
+        this.setState({ reportStatus: 'unknown' })
+        return
+      }
+
+      // 1. 检查report状态
       const reportListResult = await reportAPI.getReportList(exerciseId)
       
+      let reports: any[] = []
       if (reportListResult.success) {
         // API可能返回数组或包含reports的对象
-        let reports: any[] = []
         if (Array.isArray(reportListResult.data)) {
           reports = reportListResult.data
         } else if (Array.isArray(reportListResult.result)) {
@@ -442,43 +537,79 @@ export default class ExerciseDetail extends Component {
         } else if (reportListResult.result?.reports) {
           reports = reportListResult.result.reports
         }
-        
-        if (reports.length > 0) {
-          const report = reports[0]
-          const hasContent = report.content && report.content.trim().length > 0
-          
-          if (hasContent) {
-            console.log('✅ report已生成学习建议，状态：completed')
-            this.setState({ reportStatus: 'completed' })
-          } else {
-            console.log('⏳ report存在但content为空，状态：generating')
-            this.setState({ reportStatus: 'generating' })
-            // 开始轮询
-            this.startPollingReportStatus(exerciseId)
-          }
-        } else {
-          console.log('📝 没有report记录，状态：empty')
-          this.setState({ reportStatus: 'empty' })
+      }
+
+      // 2. 检查audio列表（is_free=false）
+      const { audioAPI } = await import('../../utils/api_v2')
+      const audioListResult = await audioAPI.getAudioList({
+        student_id: studentId,
+        exercise_id: exerciseId
+      })
+
+      let audios: any[] = []
+      if (audioListResult.success) {
+        if (Array.isArray(audioListResult.data)) {
+          audios = audioListResult.data.filter((audio: any) => audio.is_free === false)
+        } else if (Array.isArray(audioListResult.result)) {
+          audios = audioListResult.result.filter((audio: any) => audio.is_free === false)
+        } else if (audioListResult.data?.audios) {
+          audios = audioListResult.data.audios.filter((audio: any) => audio.is_free === false)
+        } else if (audioListResult.result?.audios) {
+          audios = audioListResult.result.audios.filter((audio: any) => audio.is_free === false)
         }
+      }
+
+      console.log(`📊 评测状态检查结果:`)
+      console.log(`  - report数量: ${reports.length}`)
+      console.log(`  - audio数量: ${audios.length}`)
+
+      // 如果没有report或audio，状态为empty
+      if (reports.length === 0 || audios.length === 0) {
+        console.log('📝 没有report或audio记录，状态：empty')
+        this.setState({ reportStatus: 'empty' })
+        return
+      }
+
+      const report = reports[0]
+      const hasReportContent = report.content && report.content.trim().length > 0
+      
+      // 检查所有audio的evaluation是否都不为空
+      const allAudiosHaveEvaluation = audios.every((audio: any) => {
+        return audio.evaluation && audio.evaluation.trim().length > 0
+      })
+
+      console.log(`  - report.content有值: ${hasReportContent}`)
+      console.log(`  - 所有audio.evaluation都有值: ${allAudiosHaveEvaluation}`)
+
+      // 如果report.content不为空且所有audio的evaluation都不为空，状态为completed
+      if (hasReportContent && allAudiosHaveEvaluation) {
+        console.log('✅ 评测完成，状态：completed')
+        this.setState({ reportStatus: 'completed' })
+        this.stopPolling()
       } else {
-        console.log('⚠️  获取report列表失败')
-        this.setState({ reportStatus: 'unknown' })
+        // 否则状态为generating，开始轮询
+        console.log('⏳ 评测进行中，状态：generating')
+        console.log(`  - report.content为空: ${!hasReportContent}`)
+        console.log(`  - 有audio.evaluation为空: ${!allAudiosHaveEvaluation}`)
+        this.setState({ reportStatus: 'generating' })
+        // 开始轮询
+        this.startPollingReportStatus(exerciseId, studentId)
       }
     } catch (error) {
-      console.error('检查report状态失败:', error)
+      console.error('检查评测状态失败:', error)
       this.setState({ reportStatus: 'unknown' })
     }
   }
 
   /**
-   * 轮询检查report的content字段
-   * 每5秒检查一次，最多检查20次（100秒）
+   * 轮询检查评测状态（report.content 和所有 audio.evaluation）
+   * 每5秒检查一次，最多检查40次（200秒）
    */
   pollTimer: any = null
   pollCount: number = 0
-  maxPollCount: number = 20
+  maxPollCount: number = 40
 
-  startPollingReportStatus = (exerciseId: number) => {
+  startPollingReportStatus = (exerciseId: number, studentId: number) => {
     const { isPolling } = this.state
     
     if (isPolling) {
@@ -486,7 +617,7 @@ export default class ExerciseDetail extends Component {
       return
     }
     
-    console.log('🔄 开始轮询report状态...')
+    console.log('🔄 开始轮询评测状态...')
     this.setState({ isPolling: true })
     this.pollCount = 0
     
@@ -495,10 +626,11 @@ export default class ExerciseDetail extends Component {
       console.log(`🔄 轮询第 ${this.pollCount}/${this.maxPollCount} 次...`)
       
       try {
+        // 1. 检查report状态
         const reportListResult = await reportAPI.getReportList(exerciseId)
         
+        let reports: any[] = []
         if (reportListResult.success) {
-          let reports: any[] = []
           if (Array.isArray(reportListResult.data)) {
             reports = reportListResult.data
           } else if (Array.isArray(reportListResult.result)) {
@@ -508,24 +640,54 @@ export default class ExerciseDetail extends Component {
           } else if (reportListResult.result?.reports) {
             reports = reportListResult.result.reports
           }
+        }
+
+        // 2. 检查audio列表（is_free=false）
+        const { audioAPI } = await import('../../utils/api_v2')
+        const audioListResult = await audioAPI.getAudioList({
+          student_id: studentId,
+          exercise_id: exerciseId
+        })
+
+        let audios: any[] = []
+        if (audioListResult.success) {
+          if (Array.isArray(audioListResult.data)) {
+            audios = audioListResult.data.filter((audio: any) => audio.is_free === false)
+          } else if (Array.isArray(audioListResult.result)) {
+            audios = audioListResult.result.filter((audio: any) => audio.is_free === false)
+          } else if (audioListResult.data?.audios) {
+            audios = audioListResult.data.audios.filter((audio: any) => audio.is_free === false)
+          } else if (audioListResult.result?.audios) {
+            audios = audioListResult.result.audios.filter((audio: any) => audio.is_free === false)
+          }
+        }
+
+        // 3. 检查是否都完成
+        if (reports.length > 0 && audios.length > 0) {
+          const report = reports[0]
+          const hasReportContent = report.content && report.content.trim().length > 0
           
-          if (reports.length > 0) {
-            const report = reports[0]
-            const hasContent = report.content && report.content.trim().length > 0
+          // 检查所有audio的evaluation是否都不为空
+          const allAudiosHaveEvaluation = audios.every((audio: any) => {
+            return audio.evaluation && audio.evaluation.trim().length > 0
+          })
+
+          console.log(`  - report.content有值: ${hasReportContent}`)
+          console.log(`  - 所有audio.evaluation都有值: ${allAudiosHaveEvaluation}`)
+
+          // 如果report.content不为空且所有audio的evaluation都不为空，评测完成
+          if (hasReportContent && allAudiosHaveEvaluation) {
+            console.log('✅ 轮询成功：评测已完成！')
+            this.setState({ reportStatus: 'completed', isPolling: false })
+            this.stopPolling()
             
-            if (hasContent) {
-              console.log('✅ 轮询成功：report已生成学习建议！')
-              this.setState({ reportStatus: 'completed', isPolling: false })
-              this.stopPolling()
-              
-              // 提示用户
-              Taro.showToast({
-                title: '学习建议已生成',
-                icon: 'success',
-                duration: 2000
-              })
-              return
-            }
+            // 提示用户
+            Taro.showToast({
+              title: '评测完成',
+              icon: 'success',
+              duration: 2000
+            })
+            return
           }
         }
         
@@ -662,7 +824,7 @@ export default class ExerciseDetail extends Component {
   }
 
   handleViewSummary = () => {
-    const { currentExercise, reportStatus } = this.state
+    const { currentExercise } = this.state
     
     if (!currentExercise || !currentExercise.id) {
       Taro.showToast({
@@ -672,30 +834,23 @@ export default class ExerciseDetail extends Component {
       return
     }
     
-    // 检查report状态
-    if (reportStatus === 'generating') {
+    // 获取学生ID
+    const studentInfo = Taro.getStorageSync('studentInfo')
+    const studentId = studentInfo?.id
+    
+    if (!studentId) {
       Taro.showToast({
-        title: '学习建议生成中，请稍候...',
-        icon: 'loading',
-        duration: 2000
+        title: '请先登录',
+        icon: 'none'
       })
       return
     }
     
-    if (reportStatus === 'empty' || reportStatus === 'unknown') {
-      Taro.showToast({
-        title: '暂无学习建议',
-        icon: 'none',
-        duration: 2000
-      })
-      return
-    }
+    console.log('查看总结报告:', { studentId, exerciseId: currentExercise.id })
     
-    console.log('查看总结:', { exerciseId: currentExercise.id, reportStatus })
-    
-    // 跳转到报告页面
+    // 跳转到报告页面（与teacher页面逻辑一致）
     Taro.navigateTo({
-      url: `/pages/report/index?exerciseId=${currentExercise.id}`
+      url: `/pages/report/index?exerciseId=${currentExercise.id}&studentId=${studentId}`
     })
   }
 
@@ -764,15 +919,17 @@ export default class ExerciseDetail extends Component {
               <AtIcon value='list' size='32' color='white' />
               <Text className='header-title'>练习详情</Text>
             </View>
-            {/* <View className='header-right'>
-              <View 
-                className='free-practice-btn'
-                onClick={this.handleFreePractice}
+            <View className='header-right'>
+              <SafeAtButton 
+                type='secondary' 
+                size='small'
+                onClick={this.handleViewFreeReport}
+                className='free-report-btn'
               >
-                <Text className='free-practice-text'>自由练习</Text>
-              </View>
+                自由对话练习总结
+              </SafeAtButton>
               <Text className='user-name'>{this.state.studentName}</Text>
-            </View> */}
+            </View>
           </View>
         </View>
 
@@ -863,13 +1020,9 @@ export default class ExerciseDetail extends Component {
                         type='primary' 
                         onClick={this.handleViewSummary}
                         className='action-btn'
-                        disabled={this.state.reportStatus === 'generating' || this.state.reportStatus === 'empty'}
                       >
-                        {this.state.reportStatus === 'generating' ? '生成中...' : '查看总结'}
+                        查看总结
                       </SafeAtButton>
-                      {this.state.reportStatus === 'generating' && (
-                        <Text className='status-hint'>学习建议生成中，请稍候</Text>
-                      )}
                     </View>
                     <SafeAtButton 
                       type='secondary' 
@@ -927,7 +1080,7 @@ export default class ExerciseDetail extends Component {
         </View>
 
         {/* 学习建议 */}
-        <View className='tips-section'>
+        {/* <View className='tips-section'>
           <SafeAtCard title='学习建议' className='tips-card'>
             <View className='tips-content'>
               <View className='tip-item'>
@@ -944,7 +1097,7 @@ export default class ExerciseDetail extends Component {
               </View>
             </View>
           </SafeAtCard>
-        </View>
+        </View> */}
         </View>
       </ScrollView>
       
