@@ -9,6 +9,7 @@ const SafeAtTag = AtTag || (() => <View>Tag not available</View>)
 const SafeAtDivider = AtDivider || (() => <View>Divider not available</View>)
 const SafeAtToast = AtToast || (() => <View>Toast not available</View>)
 const SafeAtActivityIndicator = AtActivityIndicator || (() => <View>Loading...</View>)
+const SafeAtIcon = AtIcon || (() => <View>Icon not available</View>)
 
 import Taro from '@tarojs/taro'
 import './index.scss'
@@ -270,6 +271,9 @@ export default class Conversation extends Component {
     scrollIntoViewId: '' as string, // 需要滚动到的消息ID
     playingDigitalVoiceId: null as number | null, // 正在播放的数字人语音消息ID
     digitalVoiceIconIndex: 0, // 数字人语音图标索引
+    isGeneratingSpeech: {} as Record<number, boolean>, // 正在生成语音的消息ID映射
+    playingSpeechMessageId: null as number | null, // 正在播放语音的AI消息ID
+    speechAudioContext: null as any, // 用于播放AI回复的语音
     preloadedVoiceUrls: {} as Record<number, string>, // 预加载的数字人语音URL缓存
     showInitialRecordButton: true, // 是否显示初始录音按钮（在开始对话前）
     // 评测相关状态
@@ -717,12 +721,17 @@ export default class Conversation extends Component {
         })
       }
 
-      // 显示上传成功提示
+      // 显示上传成功提示并立即返回上级页面
       Taro.showToast({
         title: '上传成功，评测进行中...',
         icon: 'success',
-        duration: 2000
+        duration: 1500
       })
+
+      // 上传成功后立即返回上级页面
+      setTimeout(() => {
+        Taro.navigateBack()
+      }, 100)
 
     } catch (error: any) {
       Taro.hideLoading()

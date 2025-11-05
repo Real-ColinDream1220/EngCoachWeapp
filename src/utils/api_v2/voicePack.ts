@@ -16,7 +16,7 @@ export const voicePackAPI = {
     // 构造请求参数
     const params: VoicePackParams = {
       text_list: textList,
-      voice: 'longxiaochun_v2',   // 固定值
+      voice: 'longchen',   // 固定值
       speech_rate: 5,              // 固定值
       pitch_rate: 5                // 固定值
     }

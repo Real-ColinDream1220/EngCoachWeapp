@@ -24,10 +24,16 @@ export default class FreeConversation extends Component {
     tid: null as number | null,
     recordedMessages: {} as Record<number, any>, // 已录音的消息记录（不显示，仅用于评测）
     studentName: '学生',
-    isLoadingConversation: false // 是否正在加载对话
+    isLoadingConversation: false, // 是否正在加载对话
+    isGeneratingSpeech: false, // 是否正在生成语音
+    isPlayingSpeech: false, // 是否正在播放语音
+    speechAudioUrl: '', // 生成的语音音频URL
+    translationText: '', // 翻译文本
+    isTranslating: false // 是否正在翻译
   }
 
   audioContext: any = null
+  speechAudioContext: any = null // 用于播放AI回复的语音
   voiceRecognitionService: TaroVoiceRecognitionService | null = null
   recognizedText: string = ''
   audio2TextPromiseResolve: ((text: string) => void) | null = null
@@ -55,6 +61,17 @@ export default class FreeConversation extends Component {
     // 初始化录音管理器
     this.audioContext = Taro.createInnerAudioContext()
     
+    // 初始化语音播放器（用于播放AI回复的语音）
+    this.speechAudioContext = Taro.createInnerAudioContext()
+    this.speechAudioContext.onEnded(() => {
+      this.setState({ isPlayingSpeech: false })
+    })
+    this.speechAudioContext.onError((error: any) => {
+      console.error('语音播放失败:', error)
+      this.setState({ isPlayingSpeech: false })
+      // 去掉播放失败的toast提示
+    })
+    
     // 加载并启动对话（使用unit_id=1）
     this.startConversation()
   }
@@ -70,6 +87,14 @@ export default class FreeConversation extends Component {
     }
     if (this.audioContext) {
       this.audioContext.destroy()
+    }
+    if (this.speechAudioContext) {
+      try {
+        this.speechAudioContext.stop()
+        this.speechAudioContext.destroy()
+      } catch (e) {
+        // 忽略错误
+      }
     }
   }
 
@@ -128,8 +153,21 @@ export default class FreeConversation extends Component {
       this.setState({ 
         isStreaming: true,
         currentAIText: '',
-        streamingText: ''
+        streamingText: '',
+        speechAudioUrl: '', // 清除旧的语音URL，新文本需要重新生成
+        isPlayingSpeech: false, // 停止播放
+        isGeneratingSpeech: false, // 清除生成状态
+        translationText: '' // 清空翻译内容
       })
+      
+      // 停止当前播放的语音
+      if (this.speechAudioContext) {
+        try {
+          this.speechAudioContext.stop()
+        } catch (e) {
+          // 忽略错误
+        }
+      }
       
       await aiChatAPI.completions({
         tid,
@@ -151,6 +189,8 @@ export default class FreeConversation extends Component {
             streamingText: '',
             currentAIText: fullResponse
           })
+          // 流式输出完成后自动生成语音
+          this.generateSpeechForText(fullResponse)
         },
         onError: (err: any) => {
           this.setState({
@@ -365,9 +405,29 @@ export default class FreeConversation extends Component {
         }
       }))
 
-      // 发送给智能体（agentId=5864）
-      console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
-      await this.sendUserMessageToAI(textToSend, tid || null)
+      // 立即清空当前的AI文字框和翻译内容
+      this.setState({
+        currentAIText: '',
+        speechAudioUrl: '', // 清除旧的语音URL
+        isPlayingSpeech: false, // 停止播放
+        translationText: '' // 清空翻译内容
+      })
+      
+      // 停止当前播放的语音
+      if (this.speechAudioContext) {
+        try {
+          this.speechAudioContext.stop()
+        } catch (e) {
+          // 忽略错误
+        }
+      }
+
+      // 等待600ms后发送给AI，等待下一条流式输出
+      setTimeout(() => {
+        // 发送给智能体（agentId=5864）
+        console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
+        this.sendUserMessageToAI(textToSend, tid || null)
+      }, 600)
     }
   }
 
@@ -396,8 +456,21 @@ export default class FreeConversation extends Component {
       this.setState({
         isStreaming: true,
         currentAIText: '',
-        streamingText: ''
+        streamingText: '',
+        speechAudioUrl: '', // 清除旧的语音URL，新文本需要重新生成
+        isPlayingSpeech: false, // 停止播放
+        isGeneratingSpeech: false, // 清除生成状态
+        translationText: '' // 清空翻译内容
       })
+      
+      // 停止当前播放的语音
+      if (this.speechAudioContext) {
+        try {
+          this.speechAudioContext.stop()
+        } catch (e) {
+          // 忽略错误
+        }
+      }
 
       await aiChatAPI.completions({
         tid,
@@ -419,6 +492,8 @@ export default class FreeConversation extends Component {
             streamingText: '',
             currentAIText: fullResponse
           })
+          // 流式输出完成后自动生成语音
+          this.generateSpeechForText(fullResponse)
         },
         onError: (err: any) => {
           this.setState({
@@ -443,6 +518,223 @@ export default class FreeConversation extends Component {
       this.handleStopRecording()
     } else {
       this.handleStartRecording()
+    }
+  }
+
+  /**
+   * 处理翻译按钮点击
+   */
+  handleTranslate = async () => {
+    const { currentAIText, isTranslating, translationText } = this.state
+
+    // 如果没有文本，无法翻译
+    if (!currentAIText || currentAIText.trim() === '') {
+      return
+    }
+
+    // 如果已经有翻译结果，清空
+    if (translationText) {
+      this.setState({ translationText: '' })
+      return
+    }
+
+    // 如果正在翻译，不重复请求
+    if (isTranslating) {
+      return
+    }
+
+    try {
+      this.setState({ isTranslating: true })
+
+      // 调用generate接口，agentId=6219
+      const cleanText = currentAIText.trim()
+      
+      console.log('📤 开始翻译，文本长度:', cleanText.length)
+      const response = await contentAPI.generate(6219, cleanText)
+      
+      console.log('📥 翻译响应:', response)
+
+      // 获取翻译内容
+      let translation = ''
+      if (response.success) {
+        // 检查是否有task_id（异步任务）
+        const taskId = response.data?.task_id || response.result?.task_id
+        if (taskId) {
+          // 异步任务，需要轮询监听
+          console.log(`⏳ 检测到异步任务(taskId=${taskId})，开始轮询...`)
+          const pollResult = await contentAPI.pollUntilComplete(taskId)
+          if (pollResult.success && pollResult.content) {
+            translation = pollResult.content.trim()
+            console.log(`✅ 异步任务完成，获取到翻译内容，长度: ${translation.length}`)
+          } else {
+            console.error('翻译任务失败:', pollResult.error || '未知错误')
+          }
+        } else {
+          // 同步任务，直接返回content
+          translation = response.data?.content || response.result?.content || ''
+          console.log(`✅ 同步任务完成，获取到翻译内容，长度: ${translation.length}`)
+        }
+      }
+
+      if (translation) {
+        console.log('✅ 翻译成功:', translation)
+        this.setState({
+          translationText: translation,
+          isTranslating: false
+        })
+      } else {
+        console.warn('⚠️ 未获取到翻译内容')
+        this.setState({ isTranslating: false })
+      }
+
+    } catch (error: any) {
+      console.error('❌ 翻译失败:', error)
+      this.setState({ isTranslating: false })
+    }
+  }
+
+  /**
+   * 自动生成语音（流式输出完成后调用）
+   */
+  generateSpeechForText = async (text: string) => {
+    if (!text || text.trim() === '') {
+      return
+    }
+
+    const { isGeneratingSpeech } = this.state
+    // 如果正在生成，不重复请求
+    if (isGeneratingSpeech) {
+      return
+    }
+
+    try {
+      this.setState({ isGeneratingSpeech: true })
+
+      // 调用文本转语音API
+      const { voicePackAPI } = await import('../../utils/api_v2')
+      
+      // 清理文本
+      const cleanText = text.trim()
+      
+      console.log('📤 流式输出完成，自动生成语音，文本长度:', cleanText.length)
+      const response = await voicePackAPI.generate([cleanText])
+      
+      console.log('📥 语音生成响应:', response)
+
+      // 获取音频URL
+      let audioUrl = ''
+      if (response.success) {
+        // 处理不同的返回格式
+        const responseAny = response as any
+        let voiceItems: any[] = []
+        if (Array.isArray(responseAny.data)) {
+          voiceItems = responseAny.data
+        } else if (Array.isArray(responseAny.result)) {
+          voiceItems = responseAny.result
+        } else if (responseAny.data?.items && Array.isArray(responseAny.data.items)) {
+          voiceItems = responseAny.data.items
+        } else if (responseAny.result?.items && Array.isArray(responseAny.result.items)) {
+          voiceItems = responseAny.result.items
+        }
+        
+        if (voiceItems.length > 0 && voiceItems[0].url) {
+          audioUrl = voiceItems[0].url
+        }
+      }
+
+      if (audioUrl) {
+        console.log('✅ 语音生成成功，音频URL:', audioUrl)
+        // 保存音频URL
+        this.setState({
+          speechAudioUrl: audioUrl,
+          isGeneratingSpeech: false
+        })
+      } else {
+        console.warn('⚠️ 未获取到语音URL')
+        this.setState({ isGeneratingSpeech: false })
+      }
+
+    } catch (error: any) {
+      console.error('❌ 生成语音失败:', error)
+      this.setState({ isGeneratingSpeech: false })
+    }
+  }
+
+  /**
+   * 处理播放AI回复语音按钮点击
+   */
+  handlePlayAISpeech = async () => {
+    const { currentAIText, isPlayingSpeech, isGeneratingSpeech, speechAudioUrl } = this.state
+
+    // 如果正在播放，停止播放
+    if (isPlayingSpeech) {
+      if (this.speechAudioContext) {
+        try {
+          this.speechAudioContext.stop()
+        } catch (e) {
+          // 忽略错误
+        }
+      }
+      this.setState({ isPlayingSpeech: false })
+      return
+    }
+
+    // 如果没有文本，无法播放
+    if (!currentAIText || currentAIText.trim() === '') {
+      return
+    }
+
+    // 如果已经有生成的语音URL，直接播放
+    if (speechAudioUrl) {
+      try {
+        this.setState({ isPlayingSpeech: true })
+        this.speechAudioContext.src = speechAudioUrl
+        this.speechAudioContext.play()
+      } catch (error: any) {
+        console.error('播放语音失败:', error)
+        this.setState({ isPlayingSpeech: false })
+      }
+      return
+    }
+
+    // 如果正在生成语音，等待生成完成
+    if (isGeneratingSpeech) {
+      // 等待生成完成，最多等待10秒
+      let waitCount = 0
+      const maxWait = 50 // 50次 * 200ms = 10秒
+      while (this.state.isGeneratingSpeech && waitCount < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+        waitCount++
+      }
+
+      // 检查是否生成完成
+      if (this.state.speechAudioUrl) {
+        try {
+          this.setState({ isPlayingSpeech: true })
+          this.speechAudioContext.src = this.state.speechAudioUrl
+          this.speechAudioContext.play()
+        } catch (error: any) {
+          console.error('播放语音失败:', error)
+          this.setState({ isPlayingSpeech: false })
+        }
+      }
+      return
+    }
+
+    // 如果没有语音URL且不在生成中，尝试生成（兜底逻辑）
+    if (currentAIText && currentAIText.trim() !== '') {
+      await this.generateSpeechForText(currentAIText)
+      // 等待生成完成后播放
+      if (this.state.speechAudioUrl) {
+        try {
+          this.setState({ isPlayingSpeech: true })
+          this.speechAudioContext.src = this.state.speechAudioUrl
+          this.speechAudioContext.play()
+        } catch (error: any) {
+          console.error('播放语音失败:', error)
+          this.setState({ isPlayingSpeech: false })
+        }
+      }
     }
   }
 
@@ -700,7 +992,7 @@ export default class FreeConversation extends Component {
       Taro.setStorageSync('currentSpeechReportId', reportId)
       Taro.setStorageSync('currentUnitId', unitIdNum)
 
-      // 步骤3: 后台异步开始评测
+      // 步骤3: 后台异步开始评测（不等待，异步执行）
       console.log('🚀 准备启动后台评测任务...')
       console.log('参数检查:', {
         studentId,
@@ -720,12 +1012,17 @@ export default class FreeConversation extends Component {
         }, 100)
       }
 
-      // 显示上传成功提示
+      // 显示上传成功提示并立即返回上级页面
       Taro.showToast({
         title: '上传成功，评测进行中...',
         icon: 'success',
-        duration: 2000
+        duration: 1500
       })
+
+      // 上传成功后立即返回上级页面
+      setTimeout(() => {
+        Taro.navigateBack()
+      }, 100)
 
     } catch (error: any) {
       Taro.hideLoading()
@@ -1066,7 +1363,11 @@ export default class FreeConversation extends Component {
       currentAIText,
       isRecording,
       isLoadingConversation,
-      recordedMessages
+      recordedMessages,
+      isPlayingSpeech,
+      isGeneratingSpeech,
+      translationText,
+      isTranslating
     } = this.state
 
     return (
@@ -1111,7 +1412,45 @@ export default class FreeConversation extends Component {
                 <Text className='streaming-dot'>●</Text>
               )}
             </Text>
+            {/* 播放按钮和翻译按钮（居中下方） */}
+            {currentAIText && currentAIText.trim() !== '' && (
+              <View className='action-buttons-wrapper'>
+                {/* 播放按钮 */}
+                <View 
+                  className={`speech-play-btn ${this.state.isPlayingSpeech ? 'playing' : ''} ${this.state.isGeneratingSpeech ? 'generating' : ''}`}
+                  onClick={this.handlePlayAISpeech}
+                >
+                  {this.state.isGeneratingSpeech ? (
+                    <SafeAtActivityIndicator size={20} color='#667eea' />
+                  ) : this.state.isPlayingSpeech ? (
+                    <SafeAtIcon value='pause' size='24' color='#667eea' />
+                  ) : (
+                    <SafeAtIcon value='play' size='24' color='#667eea' />
+                  )}
+                </View>
+                {/* 翻译按钮 */}
+                <View 
+                  className={`translate-btn ${translationText ? 'has-translation' : ''} ${isTranslating ? 'translating' : ''}`}
+                  onClick={this.handleTranslate}
+                >
+                  {isTranslating ? (
+                    <SafeAtActivityIndicator size={20} color='#667eea' />
+                  ) : translationText ? (
+                    <SafeAtIcon value='close' size='24' color='#667eea' />
+                  ) : (
+                    <SafeAtIcon value='list' size='24' color='#667eea' />
+                  )}
+                </View>
+              </View>
+            )}
           </View>
+          
+          {/* 翻译结果显示区域（在文字框下方） */}
+          {translationText && translationText.trim() !== '' && (
+            <View className='translation-box'>
+              <Text className='translation-text'>{translationText}</Text>
+            </View>
+          )}
         </View>
 
         {/* 录音按钮区域（页面底部中间） */}

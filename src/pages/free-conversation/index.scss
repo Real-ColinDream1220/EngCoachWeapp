@@ -130,6 +130,74 @@
     max-height: calc(100vh - 500px);
     overflow-y: auto;
     box-sizing: border-box;
+    position: relative;
+    
+    // 播放按钮和翻译按钮容器（居中下方）
+    .action-buttons-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      margin-top: 30px;
+      width: 100%;
+      
+      .speech-play-btn,
+      .translate-btn {
+        width: 60px;
+        height: 60px;
+        background: #f5f7fa;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        
+        &:active {
+          transform: scale(0.95);
+          opacity: 0.8;
+        }
+      }
+      
+      .speech-play-btn {
+        &.playing {
+          background: #e6f7ff;
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        &.generating {
+          background: #f0f0f0;
+        }
+      }
+      
+      .translate-btn {
+        &.has-translation {
+          background: #e6f7ff;
+        }
+        
+        &.translating {
+          background: #f0f0f0;
+        }
+      }
+    }
+    
+    // 思考中的加载提示
+    .thinking-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      min-height: 200px;
+      
+      .thinking-text {
+        font-size: 28px;
+        color: #667eea;
+        margin-top: 20px;
+        font-weight: 500;
+      }
+    }
     
     .ai-text {
       font-size: 32px;
@@ -146,6 +214,27 @@
         animation: blink 1s infinite;
         font-size: 32px;
       }
+    }
+  }
+  
+  // 翻译结果显示区域（在文字框下方）
+  .translation-box {
+    width: 100%;
+    max-width: 800px;
+    background: #f0f9ff;
+    border-radius: 20px;
+    padding: 30px 40px;
+    margin-top: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+    
+    .translation-text {
+      font-size: 28px;
+      line-height: 1.8;
+      color: #333;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
     }
   }
 }
