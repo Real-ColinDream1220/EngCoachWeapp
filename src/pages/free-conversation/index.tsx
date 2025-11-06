@@ -31,9 +31,11 @@ export default class FreeConversation extends Component {
     translationText: '', // 翻译文本
     isTranslating: false, // 是否正在翻译
     isWaitingForAIResponse: false, // 是否正在等待AI回复（用于禁用录音按钮）
-    currentVideoUrl: '', // 当前播放的视频URL
-    nextVideoUrl: '', // 下一个预加载的视频URL
-    activeVideoIndex: 0, // 当前激活的视频索引（0或1，用于双Video组件交替）
+    video0Url: '', // 第一个Video组件的视频URL
+    video1Url: '', // 第二个Video组件的视频URL
+    video0Opacity: 1, // 第一个Video组件的opacity（1显示，0隐藏）
+    video1Opacity: 0, // 第二个Video组件的opacity（1显示，0隐藏）
+    currentVideoIndex: 0, // 当前显示的视频索引（用于确定使用哪个Video组件）
     videoLoadedStatus: { // 视频加载状态
       video0: false, // 第一个视频是否已加载
       video1: false  // 第二个视频是否已加载
@@ -56,9 +58,11 @@ export default class FreeConversation extends Component {
   
   // 数字人待机动画视频URL列表
   // 注意：URL需要保持原始格式，不要被自动编码
+  // 第一个视频是播放按钮点击时使用的视频，后面两个是流式输出结束后的循环视频
   videoUrls = [
-    'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251106153355.mov',
-    'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251106153902.mov'
+    'https://t.aix101.com/udata/100728/mov/eccbb89ace11af0a0839b70a5c567bfa_20251106165454.mov', // 新视频：播放按钮点击时使用
+    'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251106153355.mov', // 原视频1：流式输出结束后使用
+    'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251106153902.mov'  // 原视频2：流式输出结束后使用
   ]
   
   /**
@@ -112,8 +116,6 @@ export default class FreeConversation extends Component {
     }
   }
   
-  // 当前播放的视频索引
-  currentVideoIndex = 0
 
   componentDidMount() {
     // 检查登录状态
@@ -138,10 +140,18 @@ export default class FreeConversation extends Component {
     this.speechAudioContext = Taro.createInnerAudioContext()
     this.speechAudioContext.onEnded(() => {
       this.setState({ isPlayingSpeech: false })
+      // 音频播放结束时，切换回原视频（索引1或2）
+      const originalVideoIndices = [1, 2]
+      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
+      this.switchToVideo(randomIndex)
     })
     this.speechAudioContext.onError((error: any) => {
       console.error('语音播放失败:', error)
       this.setState({ isPlayingSpeech: false })
+      // 音频播放错误时，也切换回原视频（索引1或2）
+      const originalVideoIndices = [1, 2]
+      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
+      this.switchToVideo(randomIndex)
       // 去掉播放失败的toast提示
     })
     
@@ -165,20 +175,24 @@ export default class FreeConversation extends Component {
   
   /**
    * 初始化视频：随机选择第一个视频，并预加载所有视频
+   * 注意：初始化时使用原视频（索引1或2），不使用新视频（索引0）
    */
   initVideo = () => {
-    // 随机选择第一个视频索引
-    this.currentVideoIndex = Math.floor(Math.random() * this.videoUrls.length)
-    const initialVideoUrl = this.videoUrls[this.currentVideoIndex]
+    // 随机选择原视频索引（1或2），不使用新视频（索引0）
+    const originalVideoIndices = [1, 2]
+    const initialVideoIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
+    const initialVideoUrl = this.videoUrls[initialVideoIndex]
     
-    // 预加载下一个视频
-    const nextIndex = this.getNextRandomVideoIndex(this.currentVideoIndex)
+    // 预加载下一个视频（在原视频之间随机选择）
+    const nextIndex = this.getNextRandomVideoIndex(initialVideoIndex)
     const nextVideoUrl = this.videoUrls[nextIndex]
     
     this.setState({ 
-      currentVideoUrl: initialVideoUrl,
-      nextVideoUrl: nextVideoUrl,
-      activeVideoIndex: 0, // 第一个Video组件激活
+      video0Url: initialVideoUrl,
+      video1Url: nextVideoUrl,
+      video0Opacity: 1, // 第一个Video组件显示
+      video1Opacity: 0, // 第二个Video组件隐藏
+      currentVideoIndex: initialVideoIndex, // 当前显示的视频索引
       videoLoadedStatus: {
         video0: false,
         video1: false
@@ -208,46 +222,116 @@ export default class FreeConversation extends Component {
   
   /**
    * 获取下一个随机视频索引（确保不是当前视频）
+   * 注意：跳过索引0（新视频），只在索引1和2之间随机选择
    */
   getNextRandomVideoIndex = (currentIndex: number): number => {
-    if (this.videoUrls.length > 1) {
+    // 只在原视频（索引1和2）之间随机选择
+    const originalVideoIndices = [1, 2]
+    if (originalVideoIndices.length > 1) {
       let nextIndex = currentIndex
       // 随机选择不同的视频
-      while (nextIndex === currentIndex) {
-        nextIndex = Math.floor(Math.random() * this.videoUrls.length)
+      while (nextIndex === currentIndex || !originalVideoIndices.includes(nextIndex)) {
+        nextIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
       }
       return nextIndex
     }
-    return 0
+    return originalVideoIndices[0] || 1
+  }
+
+  /**
+   * 切换到指定视频
+   * 使用opacity控制显示，避免重新渲染
+   */
+  switchToVideo = (videoIndex: number) => {
+    if (videoIndex < 0 || videoIndex >= this.videoUrls.length) {
+      console.warn('视频索引超出范围:', videoIndex)
+      return
+    }
+    
+    const targetVideoUrl = this.videoUrls[videoIndex]
+    const nextIndex = this.getNextRandomVideoIndex(videoIndex)
+    const nextVideoUrl = this.videoUrls[nextIndex]
+    
+    const { currentVideoIndex, video0Opacity } = this.state as any
+    
+    // 确定使用哪个Video组件来显示新视频
+    // 如果当前video0显示，则使用video1显示新视频，反之亦然
+    const useVideo1 = video0Opacity === 1
+    
+    if (useVideo1) {
+      // 使用video1显示新视频，video0隐藏并预加载下一个视频
+      this.setState({
+        video1Url: targetVideoUrl,
+        video0Url: nextVideoUrl, // 预加载下一个视频
+        video0Opacity: 0,
+        video1Opacity: 1,
+        currentVideoIndex: videoIndex
+      }, () => {
+        console.log('切换到视频:', targetVideoUrl, '索引:', videoIndex, '使用video1')
+        // 显式触发新激活视频的播放
+        this.ensureActiveVideoPlaying()
+      })
+    } else {
+      // 使用video0显示新视频，video1隐藏并预加载下一个视频
+      this.setState({
+        video0Url: targetVideoUrl,
+        video1Url: nextVideoUrl, // 预加载下一个视频
+        video0Opacity: 1,
+        video1Opacity: 0,
+        currentVideoIndex: videoIndex
+      }, () => {
+        console.log('切换到视频:', targetVideoUrl, '索引:', videoIndex, '使用video0')
+        // 显式触发新激活视频的播放
+        this.ensureActiveVideoPlaying()
+      })
+    }
   }
   
   /**
    * 处理视频播放结束：切换到预加载的视频，并预加载下一个视频
+   * 使用opacity控制显示，避免重新渲染
    */
   handleVideoEnded = (videoIndex: number) => {
-    const { currentVideoUrl, nextVideoUrl, activeVideoIndex } = this.state as any
+    const { video0Url, video1Url, video0Opacity, currentVideoIndex } = this.state as any
     
-    // 切换到下一个视频（已经在后台预加载好的）
-    const newActiveIndex = activeVideoIndex === 0 ? 1 : 0
+    // 确定当前显示的是哪个视频，切换到另一个视频
+    const isVideo0Active = video0Opacity === 1
+    const nextVideoUrl = isVideo0Active ? video1Url : video0Url
     
     // 预加载再下一个视频
-    const nextNextIndex = this.getNextRandomVideoIndex(this.currentVideoIndex)
+    const nextNextIndex = this.getNextRandomVideoIndex(currentVideoIndex)
     const nextNextVideoUrl = this.videoUrls[nextNextIndex]
     
     // 更新当前视频索引
-    this.currentVideoIndex = this.videoUrls.indexOf(nextVideoUrl)
+    const newCurrentVideoIndex = this.videoUrls.indexOf(nextVideoUrl)
     
-    // 切换激活的视频组件，并更新预加载的视频
-    // 通过改变src和key，配合autoplay属性实现无缝切换
-    this.setState({
-      currentVideoUrl: nextVideoUrl,
-      nextVideoUrl: nextNextVideoUrl,
-      activeVideoIndex: newActiveIndex
-    }, () => {
-      console.log('无缝切换到下一个视频:', nextVideoUrl)
-      // 显式触发新激活视频的播放
-      this.ensureActiveVideoPlaying()
-    })
+    if (isVideo0Active) {
+      // 当前video0显示，切换到video1，video0预加载下一个视频
+      this.setState({
+        video1Url: nextVideoUrl,
+        video0Url: nextNextVideoUrl, // 预加载下一个视频
+        video0Opacity: 0,
+        video1Opacity: 1,
+        currentVideoIndex: newCurrentVideoIndex
+      }, () => {
+        console.log('无缝切换到下一个视频:', nextVideoUrl, '使用video1')
+        // 显式触发新激活视频的播放
+        this.ensureActiveVideoPlaying()
+      })
+    } else {
+      // 当前video1显示，切换到video0，video1预加载下一个视频
+      this.setState({
+        video0Url: nextVideoUrl,
+        video1Url: nextNextVideoUrl, // 预加载下一个视频
+        video0Opacity: 1,
+        video1Opacity: 0,
+        currentVideoIndex: newCurrentVideoIndex
+      }, () => {
+        console.log('无缝切换到下一个视频:', nextVideoUrl, '使用video0')
+        // 显式触发新激活视频的播放
+        this.ensureActiveVideoPlaying()
+      })
+    }
   }
 
   componentWillUnmount() {
@@ -274,13 +358,14 @@ export default class FreeConversation extends Component {
 
   /**
    * 确保当前激活的视频开始播放（显式调用 play）
+   * 根据opacity判断哪个视频是激活的
    */
   ensureActiveVideoPlaying = () => {
-    const activeIndex = (this.state as any).activeVideoIndex
+    const { video0Opacity } = this.state as any
     try {
-      if (activeIndex === 0 && this.videoContext0) {
+      if (video0Opacity === 1 && this.videoContext0) {
         this.videoContext0.play()
-      } else if (activeIndex === 1 && this.videoContext1) {
+      } else if (video0Opacity === 0 && this.videoContext1) {
         this.videoContext1.play()
       }
     } catch (e) {
@@ -880,6 +965,10 @@ export default class FreeConversation extends Component {
         }
       }
       this.setState({ isPlayingSpeech: false })
+      // 手动停止播放时，也切换回原视频（索引1或2）
+      const originalVideoIndices = [1, 2]
+      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
+      this.switchToVideo(randomIndex)
       return
     }
 
@@ -887,6 +976,9 @@ export default class FreeConversation extends Component {
     if (!currentAIText || currentAIText.trim() === '') {
       return
     }
+
+    // 切换到新视频（索引0）- 播放按钮点击时使用
+    this.switchToVideo(0)
 
     // 如果已经有生成的语音URL，直接播放
     if (speechAudioUrl) {
@@ -1571,8 +1663,12 @@ export default class FreeConversation extends Component {
       isPlayingSpeech,
       isGeneratingSpeech,
       translationText,
-      isTranslating
-    } = this.state
+      isTranslating,
+      video0Url,
+      video1Url,
+      video0Opacity,
+      video1Opacity
+    } = this.state as any
 
     return (
       <View className='free-conversation-page'>
@@ -1606,129 +1702,101 @@ export default class FreeConversation extends Component {
             mode='aspectFit'
           /> */}
           
-          {/* 视频容器（保持与头像相同的尺寸）- 使用双Video组件实现无缝切换 */}
+          {/* 视频容器（保持与头像相同的尺寸）- 使用双Video组件实现无缝切换，通过opacity控制显示 */}
           <View className='video-container'>
-            {/* 第一个Video组件 - 始终渲染，通过className控制显示 */}
-            {(() => {
-              const videoUrl = (this.state as any).activeVideoIndex === 0 
-                ? (this.state as any).currentVideoUrl 
-                : (this.state as any).nextVideoUrl
-              const processedUrl = this.getVideoUrl(videoUrl)
-              
-              if ((this.state as any).activeVideoIndex === 0) {
-                console.log('视频0 - 原始URL:', videoUrl)
-                console.log('视频0 - 处理后的URL:', processedUrl)
-              }
-              
-              return (
-                <Video
-                  id='avatar-video-0'
-                  src={processedUrl}
-                  className={`avatar-video ${(this.state as any).activeVideoIndex === 0 ? 'active' : 'inactive'}`}
-                  autoplay={(this.state as any).activeVideoIndex === 0}
-                  loop={false} // 不自动循环，由onEnded事件控制
-                  muted
-                  controls={false}
-                  objectFit='cover'
-                  onLoadedData={() => {
-                    // 视频数据加载完成
-                    console.log('✅ 视频0数据加载完成')
-                    this.setState((prev: any) => ({
-                      videoLoadedStatus: {
-                        ...prev.videoLoadedStatus,
-                        video0: true
-                      }
-                    }))
-                  }}
-                  onCanPlay={() => {
-                    // 视频可以播放
-                    console.log('✅ 视频0可以播放')
-                    // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
-                    if ((this.state as any).activeVideoIndex === 0) {
-                      this.ensureActiveVideoPlaying()
-                    }
-                  }}
-                  onEnded={() => {
-                    // 只有激活的视频才处理onEnded
-                    if ((this.state as any).activeVideoIndex === 0) {
-                      this.handleVideoEnded(0)
-                    }
-                  }}
-                  onError={(e: any) => {
-                    console.error('❌ 视频0加载失败')
-                    console.error('❌ 原始URL:', videoUrl)
-                    console.error('❌ 处理后的URL:', processedUrl)
-                    console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
-                    // 如果视频加载失败，尝试切换到下一个视频
-                    if ((this.state as any).activeVideoIndex === 0) {
-                      console.log('⚠️ 视频0加载失败，尝试切换')
-                    }
-                  }}
-                  key={`video-0-${(this.state as any).activeVideoIndex === 0 ? (this.state as any).currentVideoUrl : (this.state as any).nextVideoUrl}`} // 使用key强制重新渲染
-                />
-              )
-            })()}
+            {/* 第一个Video组件 - 始终渲染，通过opacity控制显示 */}
+            <Video
+              id='avatar-video-0'
+              src={this.getVideoUrl(video0Url)}
+              className='avatar-video'
+              style={{ opacity: video0Opacity, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+              autoplay={video0Opacity === 1}
+              loop={false} // 不自动循环，由onEnded事件控制
+              muted
+              controls={false}
+              objectFit='cover'
+              onLoadedData={() => {
+                // 视频数据加载完成
+                console.log('✅ 视频0数据加载完成')
+                this.setState((prev: any) => ({
+                  videoLoadedStatus: {
+                    ...prev.videoLoadedStatus,
+                    video0: true
+                  }
+                }))
+              }}
+              onCanPlay={() => {
+                // 视频可以播放
+                console.log('✅ 视频0可以播放')
+                // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
+                if (video0Opacity === 1) {
+                  this.ensureActiveVideoPlaying()
+                }
+              }}
+              onEnded={() => {
+                // 只有激活的视频才处理onEnded
+                if (video0Opacity === 1) {
+                  this.handleVideoEnded(0)
+                }
+              }}
+              onError={(e: any) => {
+                console.error('❌ 视频0加载失败')
+                console.error('❌ 原始URL:', video0Url)
+                console.error('❌ 处理后的URL:', this.getVideoUrl(video0Url))
+                console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
+                // 如果视频加载失败，尝试切换到下一个视频
+                if (video0Opacity === 1) {
+                  console.log('⚠️ 视频0加载失败，尝试切换')
+                }
+              }}
+            />
             
-            {/* 第二个Video组件（用于无缝切换）- 始终渲染，通过className控制显示 */}
-            {(() => {
-              const videoUrl = (this.state as any).activeVideoIndex === 1 
-                ? (this.state as any).currentVideoUrl 
-                : (this.state as any).nextVideoUrl
-              const processedUrl = this.getVideoUrl(videoUrl)
-              
-              if ((this.state as any).activeVideoIndex === 1) {
-                console.log('视频1 - 原始URL:', videoUrl)
-                console.log('视频1 - 处理后的URL:', processedUrl)
-              }
-              
-              return (
-                <Video
-                  id='avatar-video-1'
-                  src={processedUrl}
-                  className={`avatar-video ${(this.state as any).activeVideoIndex === 1 ? 'active' : 'inactive'}`}
-                  autoplay={(this.state as any).activeVideoIndex === 1}
-                  loop={false} // 不自动循环，由onEnded事件控制
-                  muted
-                  controls={false}
-                  objectFit='cover'
-                  onLoadedData={() => {
-                    // 视频数据加载完成
-                    console.log('✅ 视频1数据加载完成')
-                    this.setState((prev: any) => ({
-                      videoLoadedStatus: {
-                        ...prev.videoLoadedStatus,
-                        video1: true
-                      }
-                    }))
-                  }}
-                  onCanPlay={() => {
-                    // 视频可以播放
-                    console.log('✅ 视频1可以播放')
-                    // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
-                    if ((this.state as any).activeVideoIndex === 1) {
-                      this.ensureActiveVideoPlaying()
-                    }
-                  }}
-                  onEnded={() => {
-                    // 只有激活的视频才处理onEnded
-                    if ((this.state as any).activeVideoIndex === 1) {
-                      this.handleVideoEnded(1)
-                    }
-                  }}
-                  onError={(e: any) => {
-                    console.error('❌ 视频1加载失败')
-                    console.error('❌ 原始URL:', videoUrl)
-                    console.error('❌ 处理后的URL:', processedUrl)
-                    console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
-                    // 如果视频加载失败，尝试切换到下一个视频
-                    if ((this.state as any).activeVideoIndex === 1) {
-                      console.log('⚠️ 视频1加载失败，尝试切换')
-                    }
-                  }}
-                  key={`video-1-${(this.state as any).activeVideoIndex === 1 ? (this.state as any).currentVideoUrl : (this.state as any).nextVideoUrl}`} // 使用key强制重新渲染
-                />
-              )
-            })()}
+            {/* 第二个Video组件（用于无缝切换）- 始终渲染，通过opacity控制显示 */}
+            <Video
+              id='avatar-video-1'
+              src={this.getVideoUrl(video1Url)}
+              className='avatar-video'
+              style={{ opacity: video1Opacity, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+              autoplay={video1Opacity === 1}
+              loop={false} // 不自动循环，由onEnded事件控制
+              muted
+              controls={false}
+              objectFit='cover'
+              onLoadedData={() => {
+                // 视频数据加载完成
+                console.log('✅ 视频1数据加载完成')
+                this.setState((prev: any) => ({
+                  videoLoadedStatus: {
+                    ...prev.videoLoadedStatus,
+                    video1: true
+                  }
+                }))
+              }}
+              onCanPlay={() => {
+                // 视频可以播放
+                console.log('✅ 视频1可以播放')
+                // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
+                if (video1Opacity === 1) {
+                  this.ensureActiveVideoPlaying()
+                }
+              }}
+              onEnded={() => {
+                // 只有激活的视频才处理onEnded
+                if (video1Opacity === 1) {
+                  this.handleVideoEnded(1)
+                }
+              }}
+              onError={(e: any) => {
+                console.error('❌ 视频1加载失败')
+                console.error('❌ 原始URL:', video1Url)
+                console.error('❌ 处理后的URL:', this.getVideoUrl(video1Url))
+                console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
+                // 如果视频加载失败，尝试切换到下一个视频
+                if (video1Opacity === 1) {
+                  console.log('⚠️ 视频1加载失败，尝试切换')
+                }
+              }}
+            />
             
             {/* 预加载视频组件（隐藏，用于提前缓存所有视频） */}
             {this.videoUrls.map((videoUrl, index) => (
@@ -1824,7 +1892,6 @@ export default class FreeConversation extends Component {
             <View className='loading-content'>
               <Text className='loading-tip'>对话正在加载中...</Text>
               <Text className='loading-subtitle'>请稍候，正在为您生成对话内容</Text>
-              <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
             </View>
           </View>
         )}
