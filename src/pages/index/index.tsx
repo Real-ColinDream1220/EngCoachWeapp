@@ -826,7 +826,7 @@ export default class ChapterList extends Component {
     }
     
     if (!this.state.formData.catalog) {
-      this.showToastMessage('请选择章节')
+      // this.showToastMessage('请选择章节')
       return false
     }
     
@@ -1244,7 +1244,7 @@ export default class ChapterList extends Component {
                       key={unit.id}
                       className='chapter-card'
                       title={unit.title}
-                      extra={`${unit.progress}%`}
+                      // extra={`${unit.progress}%`}
                       onClick={() => this.handleChapterClick(unit.id)}
                     >
                       <View className='chapter-content'>

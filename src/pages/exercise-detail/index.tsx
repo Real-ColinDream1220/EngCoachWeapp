@@ -940,10 +940,9 @@ export default class ExerciseDetail extends Component {
               <Text className='chapter-title'>{unitData.title || unitData.name}</Text>
               <Text className='chapter-description'>{unitData.description || '暂无描述'}</Text>
               
-              <View className='chapter-progress'>
+              {/* <View className='chapter-progress'>
                 <View className='progress-header'>
                   <Text className='progress-label'>单元进度</Text>
-                  {/* <Text className='progress-percentage'>{progress}%</Text> */}
                 </View>
                 <SafeAtProgress 
                   percent={progress} 
@@ -954,7 +953,7 @@ export default class ExerciseDetail extends Component {
                 <Text className='progress-text'>
                   已完成 {completedCount} / {totalCount} 个练习
                 </Text>
-              </View>
+              </View> */}
             </View>
           </SafeAtCard>
         </View>

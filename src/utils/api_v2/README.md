@@ -382,7 +382,7 @@ await aiChatAPI.completions({
   onError?: (error: any) => void      // 错误回调（可选）
 })
 // POST /api/ai/chat/completions
-// 参数: { tid, text, files: [], agent_id: 5864, ai_config: { agent_id: 5864 } }
+// 参数: { tid, text, files: [], agent_id: 5778, ai_config: { agent_id: 5778 } }
 // 响应: SSE 流式数据
 
 // 使用示例

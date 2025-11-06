@@ -349,7 +349,8 @@ export default class Conversation extends Component {
           scenario: exerciseDetail.description, // 使用description作为scenario
           content: exerciseDetail.content,       // 保存content数组
           dialogue_num: exerciseDetail.dialogue_num,
-          vocabs: exerciseDetail.vocabs || []   // 保存vocabs数组
+          vocabs: exerciseDetail.vocabs || [],   // 保存vocabs数组
+          image: exerciseDetail.image || null    // 保存封面图片
         }
         
         this.setState({ currentExercise }, () => {
@@ -1146,15 +1147,48 @@ export default class Conversation extends Component {
 
   /**
    * 停止录音（录音停止后会自动调用API进行识别）
+   * 优先级：停止录音后立刻发送语音气泡，其他逻辑在后台异步执行
    */
   handleStopRecording = async () => {
     const { recordingStartTime, tid } = this.state as any
     const endTime = Date.now()
     const duration = Math.floor((endTime - recordingStartTime) / 1000)
     
+    // 第一步：立刻停止录音状态，准备发送气泡
     this.setState({ isRecording: false })
 
-    // 停止录音（会触发onStop回调，在回调中调用API进行识别）
+    // 第二步：立刻创建消息ID和临时录音数据，准备显示气泡（优先级最高）
+    const messageId = Date.now()
+    const tempRecordData = {
+      pcmFilePath: '', // 稍后填充
+      ref_text: '', // 稍后填充
+      duration: duration,
+      timestamp: Date.now(),
+      isProcessing: true // 标记正在处理中
+    }
+
+    // 第三步：立刻添加用户语音气泡（带发送动画效果）
+    const userMessage = {
+      id: messageId,
+      text: '', // 用户消息不显示文本，只显示语音气泡
+      isUser: true,
+      timestamp: Date.now(),
+      isSending: true // 标记正在发送中，用于显示动画
+    }
+
+    // 立刻更新状态，显示气泡（优先级最高）
+    this.setState((prev: any) => ({
+      messages: [...prev.messages, userMessage],
+      recordedMessages: {
+        ...prev.recordedMessages,
+        [messageId]: tempRecordData
+      }
+    }))
+
+    // 立刻滚动到最新消息
+    this.scrollToLatestMessage()
+
+    // 第四步：在后台异步处理录音识别和发送（不阻塞气泡显示）
     if (this.voiceRecognitionService) {
       // 清空之前的识别文本
       this.recognizedText = ''
@@ -1180,7 +1214,7 @@ export default class Conversation extends Component {
       // 停止录音（会触发onStop回调，在回调中调用audio2text API）
       await this.voiceRecognitionService.stop()
       
-      // 步骤1: 等待audio2text识别完成（不使用轮询，直接等待结果）
+      // 步骤1: 等待audio2text识别完成（在后台异步执行）
       console.log('⏳ 等待audio2text识别完成...')
       let audio2TextResult = ''
       
@@ -1189,6 +1223,21 @@ export default class Conversation extends Component {
         console.log('✅ audio2text识别完成，识别文本:', audio2TextResult)
       } catch (error: any) {
         console.error('❌ audio2text识别失败:', error)
+        // 即使识别失败，也更新气泡状态为完成
+        this.setState((prev: any) => ({
+          messages: prev.messages.map((msg: any) => 
+            msg.id === messageId 
+              ? { ...msg, isSending: false }
+              : msg
+          ),
+          recordedMessages: {
+            ...prev.recordedMessages,
+            [messageId]: {
+              ...prev.recordedMessages[messageId],
+              isProcessing: false
+            }
+          }
+        }))
         Taro.showToast({
           title: error.message || '语音识别失败，请重试',
           icon: 'none',
@@ -1198,11 +1247,7 @@ export default class Conversation extends Component {
       }
       
       const recognizedText = audio2TextResult
-      
       const pcmFilePath = this.voiceRecognitionService.getPcmFilePath()
-
-      // 保存录音信息到recordedMessages
-      const messageId = Date.now()
       const rawText = recognizedText ? recognizedText.trim() : ''
       
       // 先调用 content_generate 接口处理识别文本
@@ -1259,31 +1304,22 @@ export default class Conversation extends Component {
         pcmFilePath: pcmFilePath || '',
         ref_text: processedRefText, // 使用 content_generate 处理后的文本作为 ref_text
         duration: duration,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        isProcessing: false
       }
 
-      // 先保存录音信息
+      // 更新录音信息和气泡状态
       this.setState((prev: any) => ({
         recordedMessages: {
           ...prev.recordedMessages,
           [messageId]: recordData
-        }
+        },
+        messages: prev.messages.map((msg: any) => 
+          msg.id === messageId 
+            ? { ...msg, isSending: false }
+            : msg
+        )
       }))
-
-      // 立即添加用户语音气泡（无论识别文本是否为空）
-      const userMessage = {
-        id: messageId,
-        text: '', // 用户消息不显示文本，只显示语音气泡
-        isUser: true,
-        timestamp: Date.now()
-      }
-
-      this.setState((prev: any) => ({
-        messages: [...prev.messages, userMessage]
-      }))
-
-      // 滚动到最新消息
-      this.scrollToLatestMessage()
 
       // 发送给智能体的消息（使用处理后的文本）
       console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
@@ -1584,7 +1620,20 @@ export default class Conversation extends Component {
     }
 
     return (
-      <View className='conversation-page'>
+      <View 
+        className='conversation-page'
+        style={currentExercise?.image ? {
+          backgroundImage: `url(${currentExercise.image})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        } : {}}
+      >
+        {/* 背景遮罩层（确保内容可读性） */}
+        {currentExercise?.image && (
+          <View className='background-overlay' />
+        )}
+        
         {/* 头部 */}
         <View className='header'>
           <View className='header-content'>
@@ -1684,14 +1733,28 @@ export default class Conversation extends Component {
                     // 用户消息：只显示语音气泡（可点击播放）
                     (this.state as any).recordedMessages[message.id] ? (
                       <View 
-                        className={`voice-bubble ${(this.state as any).playingVoiceId === message.id ? 'playing' : ''}`}
-                        onClick={() => this.handlePlayVoice(message.id)}
+                        className={`voice-bubble ${(this.state as any).playingVoiceId === message.id ? 'playing' : ''} ${message.isSending ? 'sending' : ''}`}
+                        onClick={() => {
+                          // 如果正在发送中，不允许播放
+                          if (!message.isSending) {
+                            this.handlePlayVoice(message.id)
+                          }
+                        }}
                       >
                         <Text className='voice-duration'>
                           {((this.state as any).recordedMessages[message.id]?.duration || 0)}"
                         </Text>
                         <View className='voice-icon-wrapper'>
-                          {this.renderVoiceIcon(message.id)}
+                          {message.isSending ? (
+                            // 发送中的动画效果
+                            <View className='sending-indicator'>
+                              <View className='sending-dot'></View>
+                              <View className='sending-dot'></View>
+                              <View className='sending-dot'></View>
+                            </View>
+                          ) : (
+                            this.renderVoiceIcon(message.id)
+                          )}
                         </View>
                       </View>
                     ) : null
