@@ -46,6 +46,10 @@ export default class FreeConversation extends Component {
   recognizedText: string = ''
   audio2TextPromiseResolve: ((text: string) => void) | null = null
   audio2TextPromiseReject: ((error: Error) => void) | null = null
+  
+  // 两个视频的上下文，用于显式控制播放
+  videoContext0: any = null
+  videoContext1: any = null
 
   // 头像URL（已注释，改用视频）
   // avatarUrl = 'https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
@@ -144,6 +148,14 @@ export default class FreeConversation extends Component {
     // 初始化视频：随机选择第一个视频
     this.initVideo()
     
+    // 创建 VideoContext（用于显式播放）
+    try {
+      this.videoContext0 = Taro.createVideoContext('avatar-video-0', this)
+      this.videoContext1 = Taro.createVideoContext('avatar-video-1', this)
+    } catch (e) {
+      // 忽略上下文创建错误
+    }
+    
     // 加载并启动对话（使用unit_id=1）
     this.startConversation()
   }
@@ -233,6 +245,8 @@ export default class FreeConversation extends Component {
       activeVideoIndex: newActiveIndex
     }, () => {
       console.log('无缝切换到下一个视频:', nextVideoUrl)
+      // 显式触发新激活视频的播放
+      this.ensureActiveVideoPlaying()
     })
   }
 
@@ -255,6 +269,23 @@ export default class FreeConversation extends Component {
       } catch (e) {
         // 忽略错误
       }
+    }
+  }
+
+  /**
+   * 确保当前激活的视频开始播放（显式调用 play）
+   */
+  ensureActiveVideoPlaying = () => {
+    const activeIndex = (this.state as any).activeVideoIndex
+    try {
+      if (activeIndex === 0 && this.videoContext0) {
+        this.videoContext0.play()
+      } else if (activeIndex === 1 && this.videoContext1) {
+        this.videoContext1.play()
+      }
+    } catch (e) {
+      // 忽略播放错误，部分端需要在 canplay 后再次触发
+      console.warn('显式播放失败，稍后重试', e)
     }
   }
 
@@ -1591,6 +1622,7 @@ export default class FreeConversation extends Component {
               
               return (
                 <Video
+                  id='avatar-video-0'
                   src={processedUrl}
                   className={`avatar-video ${(this.state as any).activeVideoIndex === 0 ? 'active' : 'inactive'}`}
                   autoplay={(this.state as any).activeVideoIndex === 0}
@@ -1598,7 +1630,6 @@ export default class FreeConversation extends Component {
                   muted
                   controls={false}
                   objectFit='cover'
-                  preload='auto' // 自动预加载
                   onLoadedData={() => {
                     // 视频数据加载完成
                     console.log('✅ 视频0数据加载完成')
@@ -1612,6 +1643,10 @@ export default class FreeConversation extends Component {
                   onCanPlay={() => {
                     // 视频可以播放
                     console.log('✅ 视频0可以播放')
+                    // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
+                    if ((this.state as any).activeVideoIndex === 0) {
+                      this.ensureActiveVideoPlaying()
+                    }
                   }}
                   onEnded={() => {
                     // 只有激活的视频才处理onEnded
@@ -1648,6 +1683,7 @@ export default class FreeConversation extends Component {
               
               return (
                 <Video
+                  id='avatar-video-1'
                   src={processedUrl}
                   className={`avatar-video ${(this.state as any).activeVideoIndex === 1 ? 'active' : 'inactive'}`}
                   autoplay={(this.state as any).activeVideoIndex === 1}
@@ -1655,7 +1691,6 @@ export default class FreeConversation extends Component {
                   muted
                   controls={false}
                   objectFit='cover'
-                  preload='auto' // 自动预加载
                   onLoadedData={() => {
                     // 视频数据加载完成
                     console.log('✅ 视频1数据加载完成')
@@ -1669,6 +1704,10 @@ export default class FreeConversation extends Component {
                   onCanPlay={() => {
                     // 视频可以播放
                     console.log('✅ 视频1可以播放')
+                    // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
+                    if ((this.state as any).activeVideoIndex === 1) {
+                      this.ensureActiveVideoPlaying()
+                    }
                   }}
                   onEnded={() => {
                     // 只有激活的视频才处理onEnded
@@ -1702,7 +1741,6 @@ export default class FreeConversation extends Component {
                 muted
                 controls={false}
                 objectFit='cover'
-                preload='auto' // 自动预加载
                 onLoadedData={() => {
                   console.log(`预加载视频 ${index + 1} 数据加载完成:`, videoUrl)
                 }}
