@@ -30,16 +30,17 @@ export default class FreeConversation extends Component {
     speechAudioUrl: '', // 生成的语音音频URL
     translationText: '', // 翻译文本
     isTranslating: false, // 是否正在翻译
-    isWaitingForAIResponse: false, // 是否正在等待AI回复（用于禁用录音按钮）
-    video0Url: '', // 第一个Video组件的视频URL
-    video1Url: '', // 第二个Video组件的视频URL
-    video0Opacity: 1, // 第一个Video组件的opacity（1显示，0隐藏）
-    video1Opacity: 0, // 第二个Video组件的opacity（1显示，0隐藏）
-    currentVideoIndex: 0, // 当前显示的视频索引（用于确定使用哪个Video组件）
-    videoLoadedStatus: { // 视频加载状态
-      video0: false, // 第一个视频是否已加载
-      video1: false  // 第二个视频是否已加载
-    }
+    exerciseImageUrl: '', // 当前背景使用的练习图片URL
+    videoUrls: [
+      'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251110142817.mov',
+      'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251110142839.mov'
+    ] as string[],
+    videoUrlsCached: [] as string[],
+    currentVideoIndex: 0,
+    speakingVideoUrl: 'https://t.aix101.com/udata/100728/mov/eccbb89ace11af0a0839b70a5c567bfa_20251110143611.mov',
+    speakingVideoCachedUrl: '',
+    isSpeaking: false,
+    activeIdleIndex: 0
   }
 
   audioContext: any = null
@@ -48,74 +49,145 @@ export default class FreeConversation extends Component {
   recognizedText: string = ''
   audio2TextPromiseResolve: ((text: string) => void) | null = null
   audio2TextPromiseReject: ((error: Error) => void) | null = null
-  
-  // 两个视频的上下文，用于显式控制播放
-  videoContext0: any = null
-  videoContext1: any = null
+  videoContext: any = null
+  idleVideoContextA: any = null
+  idleVideoContextB: any = null
+  speakingVideoContext: any = null
+  SPEECH_CACHE_KEY: string = 'freeConversationSpeechAudioPath'
+  IDLE_VIDEO_CACHE_KEYS: string[] = ['freeIdleVideo0', 'freeIdleVideo1']
+  SPEAKING_VIDEO_CACHE_KEY: string = 'freeSpeakingVideo'
+  videoPlayRetryTimer: any = null
+  videoPlayRetryAttempts: number = 0
+  isIdleSwitching: boolean = false
 
-  // 头像URL（已注释，改用视频）
-  // avatarUrl = 'https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
-  
-  // 数字人待机动画视频URL列表
-  // 注意：URL需要保持原始格式，不要被自动编码
-  // 第一个视频是播放按钮点击时使用的视频，后面两个是流式输出结束后的循环视频
-  videoUrls = [
-    'https://t.aix101.com/udata/100728/mov/eccbb89ace11af0a0839b70a5c567bfa_20251106165454.mov', // 新视频：播放按钮点击时使用
-    'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251106153355.mov', // 原视频1：流式输出结束后使用
-    'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251106153902.mov'  // 原视频2：流式输出结束后使用
-  ]
-  
-  /**
-   * 获取视频URL（确保URL格式正确）
-   * 注意：Taro的Video组件可能会自动处理URL，这里确保URL格式正确
-   * 问题：URL被自动编码并添加了OSS签名参数，导致加载失败
-   */
-  getVideoUrl = (url: string): string => {
-    if (!url) return ''
-    
-    // 确保URL是完整的HTTP/HTTPS URL
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      return url
-    }
-    
-    // 检查URL是否已经被处理过（包含OSS签名参数）
-    // 如果URL包含Expires、OSSAccessKeyId、Signature等参数，说明已经被转换
-    if (url.includes('Expires=') || url.includes('OSSAccessKeyId=') || url.includes('Signature=')) {
-      console.warn('URL已包含OSS签名参数，可能已被自动处理:', url)
-      // 尝试提取原始URL
-      try {
-        const urlObj = new URL(url)
-        // 如果路径被编码了，解码它
-        if (urlObj.pathname.includes('%')) {
-          urlObj.pathname = decodeURIComponent(urlObj.pathname)
-        }
-        return urlObj.toString()
-      } catch (e) {
-        console.warn('URL解析失败，使用原始URL:', url, e)
-        return url
-      }
-    }
-    
-    // 如果URL包含编码的字符，尝试解码
+  // 下载并持久化缓存语音文件，返回本地路径
+  cacheSpeechAudioFromUrl = async (remoteUrl: string): Promise<string> => {
     try {
-      // 检查URL是否包含编码的字符（如%2F表示/）
-      if (url.includes('%2F') || url.includes('%3D') || url.includes('%3F')) {
-        // 只解码路径部分，保留查询参数
-        const urlObj = new URL(url)
-        // 如果路径被编码了，解码它
-        if (urlObj.pathname.includes('%')) {
-          urlObj.pathname = decodeURIComponent(urlObj.pathname)
+      const downloadRes = await Taro.downloadFile({ url: remoteUrl })
+      // 微信端返回 statusCode，H5可能不返回；以 tempFilePath 存在为准
+      if ((downloadRes as any).tempFilePath) {
+        const tempPath = (downloadRes as any).tempFilePath
+        const saveRes = await Taro.saveFile({ tempFilePath: tempPath })
+        const localPath = (saveRes as any).savedFilePath || (saveRes as any).filePath || ''
+        if (localPath) {
+          Taro.setStorageSync(this.SPEECH_CACHE_KEY, localPath)
+          return localPath
         }
-        return urlObj.toString()
       }
-      return url
     } catch (e) {
-      // 如果URL解析失败，返回原始URL
-      console.warn('URL解析失败，使用原始URL:', url, e)
-      return url
+      // 回退到远程URL
     }
+    return remoteUrl
   }
-  
+
+  // 预下载并缓存视频到本地文件，减少切换等待
+  cacheVideoFromUrl = async (remoteUrl: string, storageKey?: string): Promise<string> => {
+    try {
+      const cachedPath = storageKey ? Taro.getStorageSync(storageKey) : ''
+      if (cachedPath) {
+        return cachedPath
+      }
+    } catch (_) {}
+
+    const res = await Taro.downloadFile({ url: remoteUrl })
+    if (res.statusCode === 200 && res.tempFilePath) {
+      try {
+        if (storageKey) {
+          Taro.setStorageSync(storageKey, res.tempFilePath)
+        }
+      } catch (_) {}
+      return res.tempFilePath
+    }
+    return remoteUrl
+  }
+
+  // 预加载两个待机视频与说话视频并更新到状态
+  preloadAllAvatarVideos = async () => {
+    try {
+      const idle0 = await this.cacheVideoFromUrl(this.state.videoUrls[0], this.IDLE_VIDEO_CACHE_KEYS[0])
+      const idle1 = await this.cacheVideoFromUrl(this.state.videoUrls[1], this.IDLE_VIDEO_CACHE_KEYS[1])
+      const speak = await this.cacheVideoFromUrl(this.state.speakingVideoUrl, this.SPEAKING_VIDEO_CACHE_KEY)
+      this.setState({
+        videoUrlsCached: [idle0, idle1],
+        speakingVideoCachedUrl: speak
+      })
+    } catch (_) {}
+  }
+
+  // 头像URL
+  avatarUrl = 'https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
+
+  // 保证头像视频始终由play()触发播放；在src或状态切换后可选seek到开头
+  playAvatarVideo = (forceSeek: boolean = false) => {
+    try {
+      const ctx = this.state.isSpeaking
+        ? this.speakingVideoContext
+        : (this.state.activeIdleIndex === 0 ? this.idleVideoContextA : this.idleVideoContextB)
+      if (forceSeek) {
+        ctx?.seek?.(0)
+      }
+      ctx?.play?.()
+    } catch (_) {}
+  }
+
+  // 在切换视频源或状态后，进行短时重试播放，避免某些机型或时序下不触发播放
+  scheduleEnsureVideoPlaying = () => {
+    try {
+      if (this.videoPlayRetryTimer) {
+        clearTimeout(this.videoPlayRetryTimer)
+        this.videoPlayRetryTimer = null
+      }
+    } catch (_) {}
+    this.videoPlayRetryAttempts = 0
+    const tryPlay = () => {
+      this.videoPlayRetryAttempts += 1
+      this.playAvatarVideo(false)
+      if (this.videoPlayRetryAttempts < 6) {
+        this.videoPlayRetryTimer = setTimeout(tryPlay, 200)
+      } else {
+        this.videoPlayRetryTimer = null
+      }
+    }
+    tryPlay()
+  }
+
+  clearEnsureVideoPlaying = () => {
+    try {
+      if (this.videoPlayRetryTimer) {
+        clearTimeout(this.videoPlayRetryTimer)
+        this.videoPlayRetryTimer = null
+      }
+    } catch (_) {}
+  }
+
+  // 预热指定的待机视频：回到开头并开始播放（隐藏态下播放以预热）
+  preheatIdleVideo = (index: number) => {
+    try {
+      const ctx = index === 0 ? this.idleVideoContextA : this.idleVideoContextB
+      ctx?.seek?.(0)
+      ctx?.play?.()
+      this.scheduleEnsureVideoPlaying()
+    } catch (_) {}
+  }
+
+  // 切换到下一个待机视频（1-2-1-2-…），尽量无缝
+  swapIdleToNext = () => {
+    if (this.isIdleSwitching) return
+    this.isIdleSwitching = true
+    const nextIndex = this.state.activeIdleIndex === 0 ? 1 : 0
+    // 先预热下一个
+    this.preheatIdleVideo(nextIndex)
+    // 再切换可见索引
+    this.setState({ activeIdleIndex: nextIndex }, () => {
+      try {
+        // 重试确保切换后的视频处于播放态
+        this.scheduleEnsureVideoPlaying()
+      } finally {
+        // 轻微延时后允许下一次切换
+        setTimeout(() => { this.isIdleSwitching = false }, 300)
+      }
+    })
+  }
 
   componentDidMount() {
     // 检查登录状态
@@ -139,199 +211,54 @@ export default class FreeConversation extends Component {
     // 初始化语音播放器（用于播放AI回复的语音）
     this.speechAudioContext = Taro.createInnerAudioContext()
     this.speechAudioContext.onEnded(() => {
-      this.setState({ isPlayingSpeech: false })
-      // 音频播放结束时，切换回原视频（索引1或2）
-      const originalVideoIndices = [1, 2]
-      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
-      this.switchToVideo(randomIndex)
+      // 语音结束：切回到两个动画视频的循环
+      this.setState({ isPlayingSpeech: false, isSpeaking: false }, () => {
+        try {
+          const nextIndex = (this.state.currentVideoIndex + 1) % this.state.videoUrls.length
+          this.setState({ currentVideoIndex: nextIndex }, () => {
+            // 切换待机动画时触发重试播放，避免不触发播放
+            this.scheduleEnsureVideoPlaying()
+          })
+        } catch (e) {}
+      })
+    })
+    this.speechAudioContext.onCanplay(() => {
+      // 资源加载完成后：开始播放语音并切换到说话动画
+      try {
+        this.setState({ isPlayingSpeech: true, isSpeaking: true }, () => {
+          // 切换说话动画时触发重试播放，避免不触发播放
+          this.scheduleEnsureVideoPlaying()
+          this.speechAudioContext?.play?.()
+        })
+      } catch (e) {
+        this.setState({ isPlayingSpeech: false, isSpeaking: false })
+      }
     })
     this.speechAudioContext.onError((error: any) => {
       console.error('语音播放失败:', error)
       this.setState({ isPlayingSpeech: false })
-      // 音频播放错误时，也切换回原视频（索引1或2）
-      const originalVideoIndices = [1, 2]
-      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
-      this.switchToVideo(randomIndex)
       // 去掉播放失败的toast提示
     })
     
-    // 初始化视频：随机选择第一个视频
-    this.initVideo()
-    
-    // 创建 VideoContext（用于显式播放）
-    try {
-      this.videoContext0 = Taro.createVideoContext('avatar-video-0', this)
-      this.videoContext1 = Taro.createVideoContext('avatar-video-1', this)
-    } catch (e) {
-      // 忽略上下文创建错误
-    }
-    
     // 加载并启动对话（使用unit_id=1）
     this.startConversation()
-  }
-  
-  // 两个Video组件的ref引用
-  videoRefs: any[] = [null, null]
-  
-  /**
-   * 初始化视频：随机选择第一个视频，并预加载所有视频
-   * 注意：初始化时使用原视频（索引1或2），不使用新视频（索引0）
-   */
-  initVideo = () => {
-    // 随机选择原视频索引（1或2），不使用新视频（索引0）
-    const originalVideoIndices = [1, 2]
-    const initialVideoIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
-    const initialVideoUrl = this.videoUrls[initialVideoIndex]
-    
-    // 预加载下一个视频（在原视频之间随机选择）
-    const nextIndex = this.getNextRandomVideoIndex(initialVideoIndex)
-    const nextVideoUrl = this.videoUrls[nextIndex]
-    
-    this.setState({ 
-      video0Url: initialVideoUrl,
-      video1Url: nextVideoUrl,
-      video0Opacity: 1, // 第一个Video组件显示
-      video1Opacity: 0, // 第二个Video组件隐藏
-      currentVideoIndex: initialVideoIndex, // 当前显示的视频索引
-      videoLoadedStatus: {
-        video0: false,
-        video1: false
-      }
-    })
-    
-    // 预加载所有视频（在后台创建隐藏的Video组件进行预加载）
-    this.preloadAllVideos()
-  }
-  
-  /**
-   * 预加载所有视频：在后台创建隐藏的Video组件进行预加载
-   */
-  preloadAllVideos = () => {
-    console.log('开始预加载所有视频...')
-    
-    // 为每个视频URL创建预加载任务
-    this.videoUrls.forEach((videoUrl, index) => {
-      // 使用Taro的预加载机制
-      // 注意：Taro的Video组件不支持直接预加载，我们需要通过创建隐藏的Video组件来预加载
-      console.log(`预加载视频 ${index + 1}:`, videoUrl)
-    })
-    
-    // 视频预加载会在Video组件的onLoadedData事件中完成
-    // 我们通过监听onLoadedData来更新加载状态
-  }
-  
-  /**
-   * 获取下一个随机视频索引（确保不是当前视频）
-   * 注意：跳过索引0（新视频），只在索引1和2之间随机选择
-   */
-  getNextRandomVideoIndex = (currentIndex: number): number => {
-    // 只在原视频（索引1和2）之间随机选择
-    const originalVideoIndices = [1, 2]
-    if (originalVideoIndices.length > 1) {
-      let nextIndex = currentIndex
-      // 随机选择不同的视频
-      while (nextIndex === currentIndex || !originalVideoIndices.includes(nextIndex)) {
-        nextIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
-      }
-      return nextIndex
-    }
-    return originalVideoIndices[0] || 1
-  }
 
-  /**
-   * 切换到指定视频
-   * 使用opacity控制显示，避免重新渲染
-   */
-  switchToVideo = (videoIndex: number) => {
-    if (videoIndex < 0 || videoIndex >= this.videoUrls.length) {
-      console.warn('视频索引超出范围:', videoIndex)
-      return
-    }
-    
-    const targetVideoUrl = this.videoUrls[videoIndex]
-    const nextIndex = this.getNextRandomVideoIndex(videoIndex)
-    const nextVideoUrl = this.videoUrls[nextIndex]
-    
-    const { currentVideoIndex, video0Opacity } = this.state as any
-    
-    // 确定使用哪个Video组件来显示新视频
-    // 如果当前video0显示，则使用video1显示新视频，反之亦然
-    const useVideo1 = video0Opacity === 1
-    
-    if (useVideo1) {
-      // 使用video1显示新视频，video0隐藏并预加载下一个视频
-      this.setState({
-        video1Url: targetVideoUrl,
-        video0Url: nextVideoUrl, // 预加载下一个视频
-        video0Opacity: 0,
-        video1Opacity: 1,
-        currentVideoIndex: videoIndex
-      }, () => {
-        console.log('切换到视频:', targetVideoUrl, '索引:', videoIndex, '使用video1')
-        // 显式触发新激活视频的播放
-        this.ensureActiveVideoPlaying()
-      })
-    } else {
-      // 使用video0显示新视频，video1隐藏并预加载下一个视频
-      this.setState({
-        video0Url: targetVideoUrl,
-        video1Url: nextVideoUrl, // 预加载下一个视频
-        video0Opacity: 1,
-        video1Opacity: 0,
-        currentVideoIndex: videoIndex
-      }, () => {
-        console.log('切换到视频:', targetVideoUrl, '索引:', videoIndex, '使用video0')
-        // 显式触发新激活视频的播放
-        this.ensureActiveVideoPlaying()
-      })
-    }
-  }
-  
-  /**
-   * 处理视频播放结束：切换到预加载的视频，并预加载下一个视频
-   * 使用opacity控制显示，避免重新渲染
-   */
-  handleVideoEnded = (videoIndex: number) => {
-    const { video0Url, video1Url, video0Opacity, currentVideoIndex } = this.state as any
-    
-    // 确定当前显示的是哪个视频，切换到另一个视频
-    const isVideo0Active = video0Opacity === 1
-    const nextVideoUrl = isVideo0Active ? video1Url : video0Url
-    
-    // 预加载再下一个视频
-    const nextNextIndex = this.getNextRandomVideoIndex(currentVideoIndex)
-    const nextNextVideoUrl = this.videoUrls[nextNextIndex]
-    
-    // 更新当前视频索引
-    const newCurrentVideoIndex = this.videoUrls.indexOf(nextVideoUrl)
-    
-    if (isVideo0Active) {
-      // 当前video0显示，切换到video1，video0预加载下一个视频
-      this.setState({
-        video1Url: nextVideoUrl,
-        video0Url: nextNextVideoUrl, // 预加载下一个视频
-        video0Opacity: 0,
-        video1Opacity: 1,
-        currentVideoIndex: newCurrentVideoIndex
-      }, () => {
-        console.log('无缝切换到下一个视频:', nextVideoUrl, '使用video1')
-        // 显式触发新激活视频的播放
-        this.ensureActiveVideoPlaying()
-      })
-    } else {
-      // 当前video1显示，切换到video0，video1预加载下一个视频
-      this.setState({
-        video0Url: nextVideoUrl,
-        video1Url: nextNextVideoUrl, // 预加载下一个视频
-        video0Opacity: 1,
-        video1Opacity: 0,
-        currentVideoIndex: newCurrentVideoIndex
-      }, () => {
-        console.log('无缝切换到下一个视频:', nextVideoUrl, '使用video0')
-        // 显式触发新激活视频的播放
-        this.ensureActiveVideoPlaying()
-      })
-    }
+    // 初始化视频上下文并开始播放当前视频（不使用autoplay属性）
+    Taro.nextTick(() => {
+      try {
+        // 初始化三个视频上下文
+        this.idleVideoContextA = Taro.createVideoContext('freeIdleVideoA', this)
+        this.idleVideoContextB = Taro.createVideoContext('freeIdleVideoB', this)
+        this.speakingVideoContext = Taro.createVideoContext('freeSpeakingVideo', this)
+        // 使用重试机制确保初次播放触发（待机A为初始可见）
+        this.scheduleEnsureVideoPlaying()
+      } catch (e) {
+        // 忽略H5不支持的情况
+      }
+    })
+
+    // 异步预加载视频到本地，减少切换间隔
+    this.preloadAllAvatarVideos()
   }
 
   componentWillUnmount() {
@@ -354,24 +281,7 @@ export default class FreeConversation extends Component {
         // 忽略错误
       }
     }
-  }
-
-  /**
-   * 确保当前激活的视频开始播放（显式调用 play）
-   * 根据opacity判断哪个视频是激活的
-   */
-  ensureActiveVideoPlaying = () => {
-    const { video0Opacity } = this.state as any
-    try {
-      if (video0Opacity === 1 && this.videoContext0) {
-        this.videoContext0.play()
-      } else if (video0Opacity === 0 && this.videoContext1) {
-        this.videoContext1.play()
-      }
-    } catch (e) {
-      // 忽略播放错误，部分端需要在 canplay 后再次触发
-      console.warn('显式播放失败，稍后重试', e)
-    }
+    this.clearEnsureVideoPlaying()
   }
 
   /**
@@ -389,6 +299,16 @@ export default class FreeConversation extends Component {
       if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
         throw new Error('该单元没有练习')
       }
+
+      // 设置背景图片为第一个有图片的练习
+      // try {
+      //   const firstWithImage = Array.isArray(exercises)
+      //     ? exercises.find((ex: any) => !!ex.image)
+      //     : null
+      //   if (firstWithImage && firstWithImage.image) {
+      //     this.setState({ exerciseImageUrl: firstWithImage.image })
+      //   }
+      // } catch (_) {}
 
       // 2. 收集所有exercises的vocabs
       const allVocabs: string[] = []
@@ -435,6 +355,8 @@ export default class FreeConversation extends Component {
         isGeneratingSpeech: false, // 清除生成状态
         translationText: '' // 清空翻译内容
       })
+      // 清除本地语音缓存
+      try { Taro.removeStorageSync(this.SPEECH_CACHE_KEY) } catch (_) {}
       
       // 停止当前播放的语音
       if (this.speechAudioContext) {
@@ -564,37 +486,13 @@ export default class FreeConversation extends Component {
 
   /**
    * 停止录音（录音停止后会自动调用API进行识别）
-   * 优先级：停止录音后立刻清空AI回复文字框，禁用录音按钮，等待AI回复完成后再启用
    */
   handleStopRecording = async () => {
     const { recordingStartTime, tid } = this.state
     const endTime = Date.now()
     const duration = Math.floor((endTime - recordingStartTime) / 1000)
     
-    // 第一步：立刻停止录音状态
     this.setState({ isRecording: false })
-    
-    // 第二步：立刻清空当前AI回复文字框内容（优先级最高）
-    this.setState({ 
-      currentAIText: '',
-      streamingText: '',
-      isStreaming: false,
-      speechAudioUrl: '', // 清除旧的语音URL
-      isPlayingSpeech: false, // 停止播放
-      translationText: '' // 清空翻译内容
-    })
-    
-    // 第三步：立刻禁用录音按钮，等待AI回复完成后再启用
-    this.setState({ isWaitingForAIResponse: true })
-    
-    // 停止当前播放的语音
-    if (this.speechAudioContext) {
-      try {
-        this.speechAudioContext.stop()
-      } catch (e) {
-        // 忽略错误
-      }
-    }
 
     if (this.voiceRecognitionService) {
       this.recognizedText = ''
@@ -627,8 +525,6 @@ export default class FreeConversation extends Component {
         console.log('✅ audio2text识别完成，识别文本:', audio2TextResult)
       } catch (error: any) {
         console.error('❌ audio2text识别失败:', error)
-        // 识别失败时也要重新启用录音按钮
-        this.setState({ isWaitingForAIResponse: false })
         Taro.showToast({
           title: error.message || '语音识别失败，请重试',
           icon: 'none',
@@ -707,10 +603,29 @@ export default class FreeConversation extends Component {
         }
       }))
 
-      // 发送给智能体（agentId=5864）
-      console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
+      // 立即清空当前的AI文字框和翻译内容
+      this.setState({
+        currentAIText: '',
+        speechAudioUrl: '', // 清除旧的语音URL
+        isPlayingSpeech: false, // 停止播放
+        translationText: '' // 清空翻译内容
+      })
+      // 清除本地语音缓存
+      try { Taro.removeStorageSync(this.SPEECH_CACHE_KEY) } catch (_) {}
+      
+      // 停止当前播放的语音
+      if (this.speechAudioContext) {
+        try {
+          this.speechAudioContext.stop()
+        } catch (e) {
+          // 忽略错误
+        }
+      }
+
       // 等待600ms后发送给AI，等待下一条流式输出
       setTimeout(() => {
+        // 发送给智能体（agentId=5864）
+        console.log('📤 发送给智能体的消息（处理后的文本）:', textToSend || '(空文本)')
         this.sendUserMessageToAI(textToSend, tid || null)
       }, 600)
     }
@@ -747,6 +662,8 @@ export default class FreeConversation extends Component {
         isGeneratingSpeech: false, // 清除生成状态
         translationText: '' // 清空翻译内容
       })
+      // 清除本地语音缓存
+      try { Taro.removeStorageSync(this.SPEECH_CACHE_KEY) } catch (_) {}
       
       // 停止当前播放的语音
       if (this.speechAudioContext) {
@@ -775,8 +692,7 @@ export default class FreeConversation extends Component {
           this.setState({
             isStreaming: false,
             streamingText: '',
-            currentAIText: fullResponse,
-            isWaitingForAIResponse: false // AI回复完成，重新启用录音按钮
+            currentAIText: fullResponse
           })
           // 流式输出完成后自动生成语音
           this.generateSpeechForText(fullResponse)
@@ -785,15 +701,12 @@ export default class FreeConversation extends Component {
           this.setState({
             isStreaming: false,
             streamingText: '',
-            currentAIText: '',
-            isWaitingForAIResponse: false // 即使出错也要重新启用录音按钮
+            currentAIText: ''
           })
           Taro.showToast({ title: 'AI对话出错', icon: 'none' })
         }
       })
     } catch (error: any) {
-      // 发生错误时也要重新启用录音按钮
-      this.setState({ isWaitingForAIResponse: false })
       Taro.showToast({ title: error.message || '发送失败', icon: 'none' })
     }
   }
@@ -933,10 +846,21 @@ export default class FreeConversation extends Component {
 
       if (audioUrl) {
         console.log('✅ 语音生成成功，音频URL:', audioUrl)
-        // 保存音频URL
+        // 下载并缓存到本地文件，再保存到状态与本地存储
+        const localPath = await this.cacheSpeechAudioFromUrl(audioUrl)
         this.setState({
-          speechAudioUrl: audioUrl,
-          isGeneratingSpeech: false
+          speechAudioUrl: localPath,
+          isGeneratingSpeech: false,
+          // 接口返回后立刻切换为说话动画（等待音频资源加载完成后onCanplay自动播放）
+          isSpeaking: true
+        }, () => {
+          try {
+            // 开始说话动画
+            // 切换动画时触发重试播放，避免不触发播放
+            this.scheduleEnsureVideoPlaying()
+            // 设置音频src，等待onCanplay触发play()
+            this.speechAudioContext.src = localPath
+          } catch (e) {}
         })
       } else {
         console.warn('⚠️ 未获取到语音URL')
@@ -965,10 +889,6 @@ export default class FreeConversation extends Component {
         }
       }
       this.setState({ isPlayingSpeech: false })
-      // 手动停止播放时，也切换回原视频（索引1或2）
-      const originalVideoIndices = [1, 2]
-      const randomIndex = originalVideoIndices[Math.floor(Math.random() * originalVideoIndices.length)]
-      this.switchToVideo(randomIndex)
       return
     }
 
@@ -977,21 +897,41 @@ export default class FreeConversation extends Component {
       return
     }
 
-    // 切换到新视频（索引0）- 播放按钮点击时使用
-    this.switchToVideo(0)
-
     // 如果已经有生成的语音URL，直接播放
     if (speechAudioUrl) {
       try {
-        this.setState({ isPlayingSpeech: true })
-        this.speechAudioContext.src = speechAudioUrl
-        this.speechAudioContext.play()
+        // 切换到说话动画并播放视频，不seek；立即更新播放中状态
+        this.setState({ isSpeaking: true, isPlayingSpeech: true }, () => {
+          this.playAvatarVideo(false)
+          // 确保从头播放
+          try { this.speechAudioContext.stop() } catch (_) {}
+          this.speechAudioContext.src = speechAudioUrl
+          try { this.speechAudioContext.seek?.(0) } catch (_) {}
+          try { this.speechAudioContext.play() } catch (_) {}
+        })
       } catch (error: any) {
-        console.error('播放语音失败:', error)
+        console.error('设置语音src失败:', error)
         this.setState({ isPlayingSpeech: false })
       }
       return
     }
+
+    // 如果状态中没有URL，尝试读取本地缓存（多次点击复用缓存）
+    try {
+      const cachedPath = Taro.getStorageSync(this.SPEECH_CACHE_KEY)
+      if (cachedPath) {
+        // 切换到说话动画并播放视频，不seek；立即更新播放中状态
+        this.setState({ isSpeaking: true, isPlayingSpeech: true }, () => {
+          this.scheduleEnsureVideoPlaying()
+          // 确保从头播放
+          try { this.speechAudioContext.stop() } catch (_) {}
+          this.speechAudioContext.src = cachedPath
+          try { this.speechAudioContext.seek?.(0) } catch (_) {}
+          try { this.speechAudioContext.play() } catch (_) {}
+        })
+        return
+      }
+    } catch (_) {}
 
     // 如果正在生成语音，等待生成完成
     if (isGeneratingSpeech) {
@@ -1006,13 +946,20 @@ export default class FreeConversation extends Component {
       // 检查是否生成完成
       if (this.state.speechAudioUrl) {
         try {
-          this.setState({ isPlayingSpeech: true })
+          // 仅设置src，等待onCanplay事件触发后再play()
           this.speechAudioContext.src = this.state.speechAudioUrl
-          this.speechAudioContext.play()
         } catch (error: any) {
-          console.error('播放语音失败:', error)
+          console.error('设置语音src失败:', error)
           this.setState({ isPlayingSpeech: false })
         }
+      } else {
+        // 状态仍无URL时，尝试本地缓存
+        try {
+          const cachedPath = Taro.getStorageSync(this.SPEECH_CACHE_KEY)
+          if (cachedPath) {
+            this.speechAudioContext.src = cachedPath
+          }
+        } catch (_) {}
       }
       return
     }
@@ -1023,13 +970,20 @@ export default class FreeConversation extends Component {
       // 等待生成完成后播放
       if (this.state.speechAudioUrl) {
         try {
-          this.setState({ isPlayingSpeech: true })
+          // 仅设置src，等待onCanplay事件触发后再play()
           this.speechAudioContext.src = this.state.speechAudioUrl
-          this.speechAudioContext.play()
         } catch (error: any) {
-          console.error('播放语音失败:', error)
+          console.error('设置语音src失败:', error)
           this.setState({ isPlayingSpeech: false })
         }
+      } else {
+        // 状态仍无URL时，尝试本地缓存
+        try {
+          const cachedPath = Taro.getStorageSync(this.SPEECH_CACHE_KEY)
+          if (cachedPath) {
+            this.speechAudioContext.src = cachedPath
+          }
+        } catch (_) {}
       }
     }
   }
@@ -1664,14 +1618,19 @@ export default class FreeConversation extends Component {
       isGeneratingSpeech,
       translationText,
       isTranslating,
-      video0Url,
-      video1Url,
-      video0Opacity,
-      video1Opacity
-    } = this.state as any
+      exerciseImageUrl
+    } = this.state
 
     return (
-      <View className='free-conversation-page'>
+      <View 
+        className='free-conversation-page'
+        style={exerciseImageUrl ? {
+          backgroundImage: `url(${exerciseImageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        } : undefined}
+      >
         {/* 头部 */}
         <View className='header'>
           <View className='header-content'>
@@ -1694,132 +1653,92 @@ export default class FreeConversation extends Component {
           </View>
         </View>
 
-        {/* 头像（放大3倍，无card）- 已注释，改用视频 */}
+        {/* 头像（放大3倍，无card） - 使用视频顺序播放与说话动画切换 */}
         <View className='avatar-section'>
-          {/* <Image 
-            src={this.avatarUrl}
-            className='avatar-image'
-            mode='aspectFit'
-          /> */}
-          
-          {/* 视频容器（保持与头像相同的尺寸）- 使用双Video组件实现无缝切换，通过opacity控制显示 */}
-          <View className='video-container'>
-            {/* 第一个Video组件 - 始终渲染，通过opacity控制显示 */}
+          <View className='avatar-video-wrapper'>
+            {/* 待机视频A（可见/隐藏覆盖），非循环，靠 onTimeUpdate 与 onEnded 触发切换 */}
             <Video
-              id='avatar-video-0'
-              src={this.getVideoUrl(video0Url)}
+              id='freeIdleVideoA'
+              src={(this.state.videoUrlsCached[0]) || this.state.videoUrls[0]}
               className='avatar-video'
-              style={{ opacity: video0Opacity, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-              autoplay={video0Opacity === 1}
-              loop={false} // 不自动循环，由onEnded事件控制
-              muted
               controls={false}
-              objectFit='cover'
-              onLoadedData={() => {
-                // 视频数据加载完成
-                console.log('✅ 视频0数据加载完成')
-                this.setState((prev: any) => ({
-                  videoLoadedStatus: {
-                    ...prev.videoLoadedStatus,
-                    video0: true
-                  }
-                }))
-              }}
-              onCanPlay={() => {
-                // 视频可以播放
-                console.log('✅ 视频0可以播放')
-                // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
-                if (video0Opacity === 1) {
-                  this.ensureActiveVideoPlaying()
-                }
+              muted
+              loop={false}
+              style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                opacity: this.state.isSpeaking ? 0 : (this.state.activeIdleIndex === 0 ? 1 : 0)
               }}
               onEnded={() => {
-                // 只有激活的视频才处理onEnded
-                if (video0Opacity === 1) {
-                  this.handleVideoEnded(0)
+                if (!this.state.isSpeaking && this.state.activeIdleIndex === 0) {
+                  this.swapIdleToNext()
                 }
               }}
-              onError={(e: any) => {
-                console.error('❌ 视频0加载失败')
-                console.error('❌ 原始URL:', video0Url)
-                console.error('❌ 处理后的URL:', this.getVideoUrl(video0Url))
-                console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
-                // 如果视频加载失败，尝试切换到下一个视频
-                if (video0Opacity === 1) {
-                  console.log('⚠️ 视频0加载失败，尝试切换')
-                }
-              }}
-            />
-            
-            {/* 第二个Video组件（用于无缝切换）- 始终渲染，通过opacity控制显示 */}
-            <Video
-              id='avatar-video-1'
-              src={this.getVideoUrl(video1Url)}
-              className='avatar-video'
-              style={{ opacity: video1Opacity, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-              autoplay={video1Opacity === 1}
-              loop={false} // 不自动循环，由onEnded事件控制
-              muted
-              controls={false}
-              objectFit='cover'
-              onLoadedData={() => {
-                // 视频数据加载完成
-                console.log('✅ 视频1数据加载完成')
-                this.setState((prev: any) => ({
-                  videoLoadedStatus: {
-                    ...prev.videoLoadedStatus,
-                    video1: true
+              onTimeUpdate={(e: any) => {
+                if (!this.state.isSpeaking && this.state.activeIdleIndex === 0) {
+                  const d = e?.detail || {}
+                  const cur = Number(d.currentTime || 0)
+                  const dur = Number(d.duration || 0)
+                  if (dur > 0 && cur >= dur - 0.2) {
+                    this.swapIdleToNext()
                   }
-                }))
-              }}
-              onCanPlay={() => {
-                // 视频可以播放
-                console.log('✅ 视频1可以播放')
-                // 如果当前是激活视频，显式触发播放，避免 autoplay 不生效
-                if (video1Opacity === 1) {
-                  this.ensureActiveVideoPlaying()
                 }
+              }}
+              onPause={() => { this.scheduleEnsureVideoPlaying() }}
+              onPlay={() => { this.clearEnsureVideoPlaying() }}
+              onWaiting={() => { this.scheduleEnsureVideoPlaying() }}
+              onError={() => { this.scheduleEnsureVideoPlaying() }}
+            />
+
+            {/* 待机视频B */}
+            <Video
+              id='freeIdleVideoB'
+              src={(this.state.videoUrlsCached[1]) || this.state.videoUrls[1]}
+              className='avatar-video'
+              controls={false}
+              muted
+              loop={false}
+              style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                opacity: this.state.isSpeaking ? 0 : (this.state.activeIdleIndex === 1 ? 1 : 0)
               }}
               onEnded={() => {
-                // 只有激活的视频才处理onEnded
-                if (video1Opacity === 1) {
-                  this.handleVideoEnded(1)
+                if (!this.state.isSpeaking && this.state.activeIdleIndex === 1) {
+                  this.swapIdleToNext()
                 }
               }}
-              onError={(e: any) => {
-                console.error('❌ 视频1加载失败')
-                console.error('❌ 原始URL:', video1Url)
-                console.error('❌ 处理后的URL:', this.getVideoUrl(video1Url))
-                console.error('❌ 错误详情:', JSON.stringify(e, null, 2))
-                // 如果视频加载失败，尝试切换到下一个视频
-                if (video1Opacity === 1) {
-                  console.log('⚠️ 视频1加载失败，尝试切换')
+              onTimeUpdate={(e: any) => {
+                if (!this.state.isSpeaking && this.state.activeIdleIndex === 1) {
+                  const d = e?.detail || {}
+                  const cur = Number(d.currentTime || 0)
+                  const dur = Number(d.duration || 0)
+                  if (dur > 0 && cur >= dur - 0.2) {
+                    this.swapIdleToNext()
+                  }
                 }
               }}
+              onPause={() => { this.scheduleEnsureVideoPlaying() }}
+              onPlay={() => { this.clearEnsureVideoPlaying() }}
+              onWaiting={() => { this.scheduleEnsureVideoPlaying() }}
+              onError={() => { this.scheduleEnsureVideoPlaying() }}
             />
-            
-            {/* 预加载视频组件（隐藏，用于提前缓存所有视频） */}
-            {this.videoUrls.map((videoUrl, index) => (
-              <Video
-                key={`preload-video-${index}`}
-                src={this.getVideoUrl(videoUrl)}
-                className='preload-video'
-                autoplay={false}
-                loop={false}
-                muted
-                controls={false}
-                objectFit='cover'
-                onLoadedData={() => {
-                  console.log(`预加载视频 ${index + 1} 数据加载完成:`, videoUrl)
-                }}
-                onCanPlay={() => {
-                  console.log(`预加载视频 ${index + 1} 可以播放:`, videoUrl)
-                }}
-                onError={(e: any) => {
-                  console.error(`预加载视频 ${index + 1} 加载失败:`, videoUrl, e)
-                }}
-              />
-            ))}
+
+            {/* 说话动画视频（在 isSpeaking 时可见并循环） */}
+            <Video
+              id='freeSpeakingVideo'
+              src={this.state.speakingVideoCachedUrl || this.state.speakingVideoUrl}
+              className='avatar-video'
+              controls={false}
+              muted
+              loop={true}
+              style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                opacity: this.state.isSpeaking ? 1 : 0
+              }}
+              onPause={() => { this.scheduleEnsureVideoPlaying() }}
+              onPlay={() => { this.clearEnsureVideoPlaying() }}
+              onWaiting={() => { this.scheduleEnsureVideoPlaying() }}
+              onError={() => { this.scheduleEnsureVideoPlaying() }}
+            />
           </View>
         </View>
 
@@ -1879,8 +1798,8 @@ export default class FreeConversation extends Component {
             type={isRecording ? 'primary' : 'secondary'}
             size='normal'
             onClick={this.handleRecordButtonClick}
+            disabled={false}
             className={`record-button ${isRecording ? 'recording' : ''}`}
-            disabled={this.state.isWaitingForAIResponse || isRecording} // 等待AI回复时禁用（停止录音时isRecording为false，但isWaitingForAIResponse为true）
           >
             {isRecording ? '停止录音' : '开始录音'}
           </SafeAtButton>
@@ -1892,6 +1811,7 @@ export default class FreeConversation extends Component {
             <View className='loading-content'>
               <Text className='loading-tip'>对话正在加载中...</Text>
               <Text className='loading-subtitle'>请稍候，正在为您生成对话内容</Text>
+              <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
             </View>
           </View>
         )}

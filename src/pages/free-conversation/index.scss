@@ -3,7 +3,7 @@
 // 复用conversation页面的样式
 .free-conversation-page {
   height: 100vh;
-  background: #f5f7fa;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -95,64 +95,20 @@
   padding: 30px;
   background: transparent;
   
-  // 头像图片样式（已注释，改用视频）
-  // .avatar-image {
-  //   width: 600px; // 放大3倍（原来200px）
-  //   height: 600px; // 放大3倍（原来200px）
-  //   border-radius: 50%;
-  //   object-fit: cover;
-  //   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  // }
-  
-  // 视频容器样式（保持与头像相同的尺寸）
-  .video-container {
-    width: 600px; // 与头像相同的尺寸
-    height: 600px; // 与头像相同的尺寸
-    border-radius: 50%; // 圆形，与头像保持一致
+  .avatar-video-wrapper {
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
     overflow: hidden;
-    background: #f5f5f5; // 设置背景色，避免黑屏
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); // 与头像相同的阴影效果
-    position: relative; // 用于定位两个Video组件
-    
-    .avatar-video {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover; // 覆盖整个容器
-      transition: opacity 0.05s ease-in-out; // 极短的过渡时间，实现快速切换
-      background: #f5f5f5; // 设置背景色，避免黑屏
-      
-      // 激活的视频显示
-      &.active {
-        opacity: 1;
-        z-index: 2;
-        visibility: visible;
-      }
-      
-      // 非激活的视频隐藏（但保持预加载）
-      &.inactive {
-        opacity: 0;
-        z-index: 1;
-        pointer-events: none; // 不响应点击事件
-        // 不使用visibility:hidden，保持视频在后台加载
-        // 使用opacity:0和z-index确保不可见但仍在加载
-      }
-    }
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    background: #000;
   }
-  
-  // 预加载视频组件（隐藏，用于提前缓存所有视频）
-  .preload-video {
-    position: absolute;
-    top: -9999px;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    z-index: -1;
+
+  .avatar-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 }
 
@@ -164,7 +120,7 @@
   left: 0;
   right: 0;
   z-index: 1;
-  background: #f5f7fa;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
