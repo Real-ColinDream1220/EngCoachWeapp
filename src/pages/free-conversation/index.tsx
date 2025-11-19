@@ -32,12 +32,12 @@ export default class FreeConversation extends Component {
     isTranslating: false, // 是否正在翻译
     exerciseImageUrl: '', // 当前背景使用的练习图片URL
     videoUrls: [
-      'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251110142817.mov',
-      'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251110142839.mov'
+      'https://t.aix101.com/udata/100728/mov/6f83c2a74808409c80547f5d398487e1_20251119143435.mov',
+      'https://t.aix101.com/udata/100728/mov/cc9091d150902835ec8c444bd4b6ab5c_20251119135132.mov'
     ] as string[],
     videoUrlsCached: [] as string[],
     currentVideoIndex: 0,
-    speakingVideoUrl: 'https://t.aix101.com/udata/100728/mov/eccbb89ace11af0a0839b70a5c567bfa_20251110143611.mov',
+    speakingVideoUrl: 'https://t.aix101.com/udata/100728/mov/eccbb89ace11af0a0839b70a5c567bfa_20251119143410.mov',
     speakingVideoCachedUrl: '',
     isSpeaking: false,
     activeIdleIndex: 0
@@ -1811,7 +1811,7 @@ export default class FreeConversation extends Component {
             <View className='loading-content'>
               <Text className='loading-tip'>对话正在加载中...</Text>
               <Text className='loading-subtitle'>请稍候，正在为您生成对话内容</Text>
-              <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
+              {/* <SafeAtActivityIndicator mode='center' size={64} color='#667eea' /> */}
             </View>
           </View>
         )}

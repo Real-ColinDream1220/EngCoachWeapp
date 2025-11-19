@@ -24,7 +24,7 @@ export const audio2TextAPI = {
     console.log('🎤 开始语音识别，文件路径:', filePath)
     
     // 获取token
-    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjY5MCwiTWFwQ2xhaW1zIjpudWxsLCJSb2xlIjoiUCIsIlN0YWZmSWQiOjAsIlN1YiI6IiIsIlRlc3RlciI6MCwiVVVJRCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIlVpZEhhc2giOiIxMDA2OTAiLCJleHAiOjE3NjI5MzY5MTQsIm9yaWdfaWF0IjoxNzYwMzQ0OTE0fQ._FNQzq1UxuK8H6G38FmBI-BJjwK-Qr0I14MQUEGwyHM'
+    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjIsIk1hcENsYWltcyI6bnVsbCwiUm9sZSI6IlgiLCJTdGFmZklkIjowLCJTdWIiOiIwIiwiVGVzdGVyIjowLCJVVUlEIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwiVWlkSGFzaCI6IjEwMDAwMiIsImV4cCI6MTc2NTk2MzUxMiwib3JpZ19pYXQiOjE3NjMzNzE1MTJ9.X8uSPIfaUWb-XOpAi3ZtFFFv2StMErLhBU5v0W-8bhg'
     const storageToken = Taro.getStorageSync('token')
     const token = storageToken || staticToken
     

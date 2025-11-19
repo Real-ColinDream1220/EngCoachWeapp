@@ -194,8 +194,8 @@ export default class ChapterList extends Component {
     }
     
     // 设置静态token
-    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjY5MCwiTWFwQ2xhaW1zIjpudWxsLCJSb2xlIjoiUCIsIlN0YWZmSWQiOjAsIlN1YiI6IiIsIlRlc3RlciI6MCwiVVVJRCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIlVpZEhhc2giOiIxMDA2OTAiLCJleHAiOjE3NjMwMjkxMzAsIm9yaWdfaWF0IjoxNzYwNDM3MTMwfQ.Qzo74V7KHk1KfRre3RFPVW1QvSuqYaCa5WlALvpVCnw'
-    
+    const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjIsIk1hcENsYWltcyI6bnVsbCwiUm9sZSI6IlgiLCJTdGFmZklkIjowLCJTdWIiOiIwIiwiVGVzdGVyIjowLCJVVUlEIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwiVWlkSGFzaCI6IjEwMDAwMiIsImV4cCI6MTc2NTk2MzUxMiwib3JpZ19pYXQiOjE3NjMzNzE1MTJ9.X8uSPIfaUWb-XOpAi3ZtFFFv2StMErLhBU5v0W-8bhg'
+
     try {
       Taro.setStorageSync('token', staticToken)
       console.log('已设置静态token')

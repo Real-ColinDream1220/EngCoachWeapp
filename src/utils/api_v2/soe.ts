@@ -23,7 +23,7 @@ export const soeAPI = {
     
     try {
       // 获取token
-      const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjIsIk1hcENsYWltcyI6bnVsbCwiUm9sZSI6IlgiLCJTdGFmZklkIjowLCJTdWIiOiIiLCJUZXN0ZXIiOjAsIlVVSUQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJVaWRIYXNoIjoiMTAwMDAyIiwiZXhwIjoxNzYzOTk5NTk3LCJvcmlnX2lhdCI6MTc2MTQwNzU5N30.0jrur8RvQwV80ablGjJcCTa_X0nJTi77R2ccTiTywaQ'
+      const staticToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBZG1MdiI6MCwiQXBwaWQiOiIiLCJBdXRob3JpdHlJZCI6IiIsIkJpZCI6MSwiSUQiOjIsIk1hcENsYWltcyI6bnVsbCwiUm9sZSI6IlgiLCJTdGFmZklkIjowLCJTdWIiOiIwIiwiVGVzdGVyIjowLCJVVUlEIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwiVWlkSGFzaCI6IjEwMDAwMiIsImV4cCI6MTc2NTk2MzUxMiwib3JpZ19pYXQiOjE3NjMzNzE1MTJ9.X8uSPIfaUWb-XOpAi3ZtFFFv2StMErLhBU5v0W-8bhg'
       const storageToken = Taro.getStorageSync('token')
       const token = storageToken || staticToken
       

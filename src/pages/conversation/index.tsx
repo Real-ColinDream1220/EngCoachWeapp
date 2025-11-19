@@ -325,6 +325,22 @@ export default class Conversation extends Component {
     // 初始化数字人语音播放器
     this.digitalVoiceContext = Taro.createInnerAudioContext()
     
+    // 初始化 AI 语音播放器（用于播放AI回复语音）
+    try {
+      const ctx = Taro.createInnerAudioContext()
+      ctx.onEnded(() => {
+        this.setState({ playingSpeechMessageId: null })
+      })
+      ctx.onError((err: any) => {
+        console.error('AI语音播放失败:', err)
+        this.setState({ playingSpeechMessageId: null })
+        Taro.showToast({ title: '播放失败', icon: 'none' })
+      })
+      this.setState({ speechAudioContext: ctx })
+    } catch (e) {
+      console.warn('初始化AI语音播放器失败:', e)
+    }
+    
     const instance = Taro.getCurrentInstance()
     const { unitId, exerciseId } = instance?.router?.params || {}
     this.setState({
@@ -1549,6 +1565,130 @@ export default class Conversation extends Component {
   }
 
   /**
+   * 下载并持久化缓存语音文件，返回本地路径（可带storageKey按消息ID区分）
+   */
+  cacheSpeechAudioFromUrl = async (remoteUrl: string, storageKey?: string): Promise<string> => {
+    try {
+      if (storageKey) {
+        const cached = Taro.getStorageSync(storageKey)
+        if (cached) return cached
+      }
+    } catch (_) {}
+
+    try {
+      const downloadRes = await Taro.downloadFile({ url: remoteUrl })
+      const tempPath = (downloadRes as any).tempFilePath || ''
+      if (tempPath) {
+        if (storageKey) {
+          try {
+            const saveRes = await Taro.saveFile({ tempFilePath: tempPath })
+            const localPath = (saveRes as any).savedFilePath || (saveRes as any).filePath || tempPath
+            Taro.setStorageSync(storageKey, localPath)
+            return localPath
+          } catch {
+            // 保存失败则回退到tempPath
+            return tempPath
+          }
+        }
+        return tempPath
+      }
+    } catch (e) {
+      console.warn('下载语音失败，回退到远程URL:', e)
+    }
+    return remoteUrl
+  }
+
+  /**
+   * 停止AI语音播放
+   */
+  stopSpeechPlayback = () => {
+    const { speechAudioContext } = this.state as any
+    try {
+      speechAudioContext?.stop?.()
+    } catch (_) {}
+    this.setState({ playingSpeechMessageId: null })
+  }
+
+  /**
+   * 播放某条AI消息的语音（与自由对话逻辑一致）
+   */
+  playAISpeech = async (messageId: number, messageText: string) => {
+    const {
+      playingSpeechMessageId,
+      preloadedVoiceUrls,
+      speechAudioContext,
+      playingVoiceId
+    } = this.state as any
+
+    // 若用户录音正在播放，避免冲突
+    if (playingVoiceId !== null) {
+      Taro.showToast({ title: '请等待当前音频播放完成', icon: 'none' })
+      return
+    }
+
+    // 再次点击则停止播放
+    if (playingSpeechMessageId === messageId) {
+      this.stopSpeechPlayback()
+      return
+    }
+
+    // 停止其他消息的AI语音
+    if (playingSpeechMessageId !== null) {
+      this.stopSpeechPlayback()
+    }
+
+    try {
+      let localAudioPath = preloadedVoiceUrls[messageId]
+
+      if (!localAudioPath) {
+        // 无缓存则生成
+        const cleanText = (messageText || '').replace(/^[QA]:\s*/, '').trim()
+        if (!cleanText) return
+
+        const { voicePackAPI } = await import('../../utils/api_v2')
+        const response = await voicePackAPI.generate([cleanText])
+
+        // 解析返回URL
+        let audioUrl = ''
+        if (response?.success) {
+          const r: any = response
+          let items: any[] = []
+          if (Array.isArray(r.data)) items = r.data
+          else if (Array.isArray(r.result)) items = r.result
+          else if (Array.isArray(r?.data?.items)) items = r.data.items
+          else if (Array.isArray(r?.result?.items)) items = r.result.items
+          if (items.length > 0 && items[0]?.url) {
+            audioUrl = items[0].url
+          }
+        }
+
+        if (!audioUrl) {
+          Taro.showToast({ title: '语音生成失败', icon: 'none' })
+          return
+        }
+
+        // 缓存本地（按消息ID区分storageKey）
+        const storageKey = `conversationSpeechAudioPath_${messageId}`
+        localAudioPath = await this.cacheSpeechAudioFromUrl(audioUrl, storageKey)
+
+        this.setState((prev: any) => ({
+          preloadedVoiceUrls: { ...prev.preloadedVoiceUrls, [messageId]: localAudioPath }
+        }))
+      }
+
+      // 设置并播放
+      try { speechAudioContext?.stop?.() } catch (_) {}
+      speechAudioContext.src = localAudioPath
+      try { speechAudioContext?.seek?.(0) } catch (_) {}
+      try { speechAudioContext?.play?.() } catch (_) {}
+      this.setState({ playingSpeechMessageId: messageId })
+    } catch (err) {
+      console.error('播放AI语音失败:', err)
+      Taro.showToast({ title: '播放失败', icon: 'none' })
+    }
+  }
+
+  /**
    * 渲染语音图标
    */
   renderVoiceIcon = (messageId: number) => {
@@ -1717,6 +1857,15 @@ export default class Conversation extends Component {
                             <Text className='streaming-dot' style={{ marginLeft: '8px', color: '#667eea' }}>●</Text>
                           ) : null}
                         </Text>
+                        <SafeAtButton
+                          type='secondary'
+                          size='small'
+                          className='play-btn'
+                          disabled={message.isStreaming || (isStreaming && message.id === (this.state as any).streamingMessageId)}
+                          onClick={() => this.playAISpeech(message.id, message.text)}
+                        >
+                          播放
+                        </SafeAtButton>
                       </View>
                     ) : null
                   )}
@@ -1746,7 +1895,7 @@ export default class Conversation extends Component {
             <View className='loading-content'>
               <Text className='loading-tip'>练习正在加载中...</Text>
               <Text className='loading-subtitle'>请稍候，正在为您生成对话内容</Text>
-              <SafeAtActivityIndicator mode='center' size={64} color='#667eea' />
+              {/* <SafeAtActivityIndicator mode='center' size={64} color='#667eea' /> */}
             </View>
           </View>
         )}

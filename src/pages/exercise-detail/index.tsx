@@ -1115,7 +1115,7 @@ export default class ExerciseDetail extends Component {
         onClick={this.handleFloatButtonClick}
       >
         <TaroImage
-          src='https://t.aix101.com/udata/100728/png/32036005d1f6ed59803ba3e13c80993e_20251105112941.png'
+          src='https://t.aix101.com/udata/100728/png/f1705edb7e83dc9781860973b191e971_20251119150645.png'
           className='float-button-image'
           mode='aspectFill'
         />
